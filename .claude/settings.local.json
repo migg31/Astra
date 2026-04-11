@@ -1,0 +1,40 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir \"C:\\\\Users\\\\steph\\\\Documents\\\\Dev-Projects\\\\Astra\")",
+      "Bash(uv --version)",
+      "Bash(docker --version)",
+      "Bash(python:*)",
+      "Bash(docker compose:*)",
+      "Bash(netstat -ano)",
+      "Bash(docker rm:*)",
+      "Bash(docker exec:*)",
+      "Bash(break)",
+      "Bash(curl -s http://127.0.0.1:8000/health)",
+      "Bash(curl -s http://127.0.0.1:8000/db/ping)",
+      "WebSearch",
+      "WebFetch(domain:www.easa.europa.eu)",
+      "Bash(curl -sL \"https://www.easa.europa.eu/en/document-library/easy-access-rules/easy-access-rules-initial-airworthiness-and-environmental\" -o /tmp/easa_page.html)",
+      "Read(//tmp/**)",
+      "Bash(curl -sL \"https://www.easa.europa.eu/en/document-library/easy-access-rules/easy-access-rules-initial-airworthiness-and-environmental\" -o \"C:\\\\Users\\\\steph\\\\Documents\\\\Dev-Projects\\\\Astra\\\\scratch\\\\easa_page.html\")",
+      "Bash(curl -sL -o easa_part21.zip \"https://www.easa.europa.eu/en/downloads/136660/en\")",
+      "Bash(unzip -l easa_part21.zip)",
+      "Bash(unzip -o easa_part21.zip)",
+      "Bash(mv \"Easy Access Rules for Initial Airworthiness and Environmental Protection \\(Regulation \\(EU\\) No 7482012\\) - xml.xml\" easa_part21.xml)",
+      "Bash(wc -c *.xml)",
+      "Bash(curl -sS \"http://127.0.0.1:8000/api/nodes?node_type=IR&q=21.A.91&limit=5\")",
+      "Bash(curl -sS \"http://127.0.0.1:8000/api/nodes/000830a2-2874-498d-8ba4-10455f3d7235\")",
+      "Bash(curl -sS \"http://127.0.0.1:8000/api/nodes/000830a2-2874-498d-8ba4-10455f3d7235/neighbors\")",
+      "Bash(npm --version)",
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npm run:*)",
+      "Bash(curl -sI \"http://127.0.0.1:5173/\")",
+      "Bash(curl -sS \"http://127.0.0.1:5173/\")",
+      "Bash(curl -sS -H \"Origin: http://localhost:5173\" \"http://127.0.0.1:8000/api/nodes?limit=3\")",
+      "Bash(curl -sS \"http://localhost:5173/\")",
+      "Bash(curl -sS \"http://localhost:5173/src/App.tsx\")",
+      "Bash(curl -sS -H \"Origin: http://localhost:5173\" -I \"http://127.0.0.1:8000/api/nodes?limit=1\")"
+    ]
+  }
+}
