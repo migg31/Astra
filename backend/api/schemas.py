@@ -19,6 +19,9 @@ class NodeDetail(NodeSummary):
     content_text: str
     content_html: str | None = None
     content_hash: str
+    regulatory_source: str | None = None
+    applicability_date: str | None = None
+    entry_into_force_date: str | None = None
     confidence: float
     created_at: datetime
     updated_at: datetime

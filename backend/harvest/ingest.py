@@ -81,6 +81,9 @@ def upsert_nodes(cur, doc_id: str, result: ParseResult) -> dict[tuple[str, str],
             n.content_hash,
             n.hierarchy_path,
             doc_id,
+            n.regulatory_source,
+            n.applicability_date,
+            n.entry_into_force_date,
         )
         for n in result.nodes
     ]
@@ -89,19 +92,23 @@ def upsert_nodes(cur, doc_id: str, result: ParseResult) -> dict[tuple[str, str],
         """
         INSERT INTO regulatory_nodes
             (node_type, reference_code, title, content_text, content_html, content_hash,
-             hierarchy_path, source_doc_id)
+             hierarchy_path, source_doc_id, regulatory_source,
+             applicability_date, entry_into_force_date)
         VALUES %s
         ON CONFLICT (node_type, reference_code) DO UPDATE
-            SET title         = EXCLUDED.title,
-                content_text  = EXCLUDED.content_text,
-                content_html  = EXCLUDED.content_html,
-                content_hash  = EXCLUDED.content_hash,
-                hierarchy_path= EXCLUDED.hierarchy_path,
-                source_doc_id = EXCLUDED.source_doc_id,
-                updated_at    = NOW()
+            SET title                 = EXCLUDED.title,
+                content_text          = EXCLUDED.content_text,
+                content_html          = EXCLUDED.content_html,
+                content_hash          = EXCLUDED.content_hash,
+                hierarchy_path        = EXCLUDED.hierarchy_path,
+                source_doc_id         = EXCLUDED.source_doc_id,
+                regulatory_source     = EXCLUDED.regulatory_source,
+                applicability_date    = EXCLUDED.applicability_date,
+                entry_into_force_date = EXCLUDED.entry_into_force_date,
+                updated_at            = NOW()
         """,
         rows,
-        template="(%s::node_type, %s, %s, %s, %s, %s, %s, %s)",
+        template="(%s::node_type, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
     )
 
     cur.execute(

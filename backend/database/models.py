@@ -39,6 +39,9 @@ class RegulatoryNode(Base):
         ForeignKey("harvest_documents.doc_id"), nullable=True
     )
     content_html: Mapped[str | None] = mapped_column(Text, nullable=True)
+    regulatory_source: Mapped[str | None] = mapped_column(Text, nullable=True)
+    applicability_date: Mapped[str | None] = mapped_column(Text, nullable=True)
+    entry_into_force_date: Mapped[str | None] = mapped_column(Text, nullable=True)
     confidence: Mapped[Decimal] = mapped_column(Numeric(3, 2))
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True))

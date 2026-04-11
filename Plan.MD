@@ -61,7 +61,7 @@
 
 | Couche | Description |
 | :--- | :--- |
-| **HARVEST** | [cite_start]Scrapers, parsers, schedulers pour la collecte automatisée des sources EASA, FAA, ICAO et standards industriels [cite: 48] |
+| **HARVEST** | [cite_start]Scrapers, parsers, schedulers pour la collecte automatisée des sources EASA, ICAO et standards industriels [cite: 48] |
 | **DATA LAYER** | [cite_start]PostgreSQL (données structurées), ChromaDB (embeddings vectoriels), File Storage (PDFs archivés) [cite: 48] |
 | **KNOWLEDGE LAYER** | [cite_start]Graph Engine (traversée des relations), RAG Engine (recherche sémantique + LLM), Content Engine (pédagogie) [cite: 48] |
 | **EXPERT MODULE** | [cite_start]Interface utilisateur : LEARN, PRACTICE, EXPLORE, WATCH, ASK, ASSESS [cite: 48] |
@@ -95,13 +95,6 @@
 | NPAs / Opinions / ED Decisions | RSS + PDF | [cite_start]Hourly RSS check [cite: 64] |
 | Airworthiness Directives | REST API | [cite_start]Daily [cite: 64] |
 | Type Certificate Data Sheets | PDF | [cite_start]Weekly [cite: 64] |
-
-[cite_start]**Sources FAA** [cite: 65]
-| Source | Format | Fréquence |
-| :--- | :--- | :--- |
-| 14 CFR Part 21, Part 25 | HTML / XML API (eCFR) | [cite_start]Weekly [cite: 66] |
-| Advisory Circulars | PDF | [cite_start]Monthly [cite: 66] |
-| FAA Orders (8110.4) | PDF | [cite_start]Monthly [cite: 66] |
 
 [cite_start]**3.2.2 Tier 2 — Standards Industriels (Paywalled)** [cite: 67]
 * [cite_start]EUROCAE : ED-12C, ED-79A, ED-80, ED-120, ED-202A [cite: 68]
@@ -209,7 +202,6 @@
 * [cite_start]DOA Privileges & Limitations (Avancé) [cite: 122]
 * [cite_start]Software & AEH Certification (Spécialiste) [cite: 123]
 * [cite_start]System Safety in TC Context (Spécialiste) [cite: 124]
-* [cite_start]EASA vs FAA Part 21 (Comparatif) [cite: 125]
 
 ### [cite_start]5.3 PRACTICE — Cas Pratiques [cite: 126]
 * [cite_start]Classification de changements (Major/Minor) avec justification [cite: 127]
@@ -316,7 +308,7 @@
 * [cite_start]Maîtrise de Part 21 Section A (Subparts B, D, E, J, M, P) [cite: 171]
 * [cite_start]Compréhension des liens Part 21 ↔ CS-25 ↔ CS-E ↔ CS-ACNS [cite: 172]
 * [cite_start]Connaissance des AMC/GM et leur valeur juridique [cite: 173]
-* [cite_start]Awareness des différences EASA / FAA / TCCA / CAAC [cite: 174]
+* [cite_start]Awareness des différences EASA / TCCA / CAAC [cite: 174]
 
 ### [cite_start]9.2 Savoir-Faire Processuel (Le « Comment ») [cite: 175]
 * [cite_start]Établir une Certification Basis (21.A.17 / 21.A.97 + 21.A.101) [cite: 176]
@@ -529,8 +521,7 @@ Les standards EUROCAE/RTCA/SAE sont mis à jour sans notification publique. [cit
 5. [cite_start]Prototyper l'interface EXPLORE [cite: 318]
 
 ### [cite_start]13.2 Phase 2 — MVP [cite: 319]
-1. [cite_start]Ajouter les sources FAA et standards industriels (interface) [cite: 320]
-2. [cite_start]Implémenter le RAG Engine avec ChromaDB [cite: 321]
+1. [cite_start]Implémenter le RAG Engine avec ChromaDB [cite: 321]
 3. [cite_start]Développer l'assistant ASK avec garde-fous anti-hallucination [cite: 322]
 4. [cite_start]Créer les premiers parcours LEARN [cite: 323]
 5. [cite_start]Développer 5-10 scénarios PRACTICE [cite: 324]
@@ -564,7 +555,6 @@ Les standards EUROCAE/RTCA/SAE sont mis à jour sans notification publique. [cit
 | POA | [cite_start]Production Organisation Approval — Agrément d'organisation de production [cite: 336] |
 | DAH | [cite_start]Design Approval Holder — Détenteur d'un agrément de conception [cite: 336] |
 | CVE | [cite_start]Compliance Verification Engineer — Ingénieur de vérification de conformité [cite: 336] |
-| DER | [cite_start]Designated Engineering Representative (FAA) [cite: 336] |
 | IR | [cite_start]Implementing Rules — Règles d'application (texte contraignant) [cite: 336] |
 | AMC | [cite_start]Acceptable Means of Compliance — Moyens acceptables de conformité [cite: 336] |
 | GM | [cite_start]Guidance Material — Matériel d'orientation (non contraignant) [cite: 336] |
@@ -587,12 +577,6 @@ Les standards EUROCAE/RTCA/SAE sont mis à jour sans notification publique. [cit
 * [cite_start]CS-25 Large Aeroplanes — Amendment 27 [cite: 341]
 * [cite_start]GM 21.A.91 Appendix A — Classification Criteria [cite: 342]
 * [cite_start]GM 21.A.101 — Changed Product Rule Guidance [cite: 343]
-
-[cite_start]**Réglementation FAA** [cite: 344]
-* [cite_start]14 CFR Part 21 — Certification Procedures for Products and Articles [cite: 345]
-* [cite_start]14 CFR Part 25 — Airworthiness Standards: Transport Category Airplanes [cite: 346]
-* [cite_start]AC 21-40 — Guide for Approving Major Changes [cite: 347]
-* [cite_start]Order 8110.4 — Type Certification [cite: 348]
 
 [cite_start]**Standards Industriels** [cite: 349]
 * [cite_start]DO-178C / ED-12C — Software Considerations in Airborne Systems [cite: 350]

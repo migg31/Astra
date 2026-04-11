@@ -57,7 +57,12 @@ export function buildTree(nodes: NodeSummary[]): SubpartGroup[] {
     for (const [code, nodes] of articles) {
       nodes.sort((a, b) => {
         const to = typeOrder(a.node_type) - typeOrder(b.node_type);
-        return to !== 0 ? to : a.reference_code.localeCompare(b.reference_code);
+        if (to !== 0) return to;
+        // Within same type: Appendix nodes come after regular nodes
+        const aApp = a.reference_code.startsWith("Appendix") ? 1 : 0;
+        const bApp = b.reference_code.startsWith("Appendix") ? 1 : 0;
+        if (aApp !== bApp) return aApp - bApp;
+        return a.reference_code.localeCompare(b.reference_code);
       });
       articleGroups.push({ articleCode: code, nodes });
     }

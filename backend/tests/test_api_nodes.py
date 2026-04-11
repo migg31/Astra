@@ -37,7 +37,8 @@ async def test_list_nodes_hierarchy_filter(client: AsyncClient):
     )
     assert r.status_code == 200
     body = r.json()
-    assert body["total"] >= 40  # we loaded 46 nodes under Section A
+    # Subparts B, D, E, G, J — at least 40 nodes expected
+    assert body["total"] >= 40
     for item in body["items"]:
         assert item["hierarchy_path"].startswith("Annex I / SECTION A")
 
@@ -63,6 +64,23 @@ async def test_get_node_detail_and_neighbors(client: AsyncClient):
     # 21.A.91 has a GM and a GM appendix pointing at it, plus IR cross-refs.
     assert "GUIDANCE_FOR" in relations_in
     assert "REFERENCES" in relations_in
+
+
+async def test_node_detail_fields(client: AsyncClient):
+    """NodeDetail must expose content_html and optional metadata fields."""
+    listing = await client.get(
+        "/api/nodes", params={"node_type": "IR", "q": "21.A.91", "limit": 1}
+    )
+    node_id = listing.json()["items"][0]["node_id"]
+    detail = await client.get(f"/api/nodes/{node_id}")
+    assert detail.status_code == 200
+    body = detail.json()
+    assert "content_html" in body
+    assert body["content_html"] is not None  # 21.A.91 always has HTML
+    # Optional fields must be present (may be null)
+    assert "regulatory_source" in body
+    assert "applicability_date" in body
+    assert "entry_into_force_date" in body
 
 
 async def test_get_node_404(client: AsyncClient):

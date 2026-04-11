@@ -26,13 +26,33 @@ R   = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 HEADING_STYLES = {
     "heading1": "h2", "heading2": "h3", "heading3": "h4",
     "heading4": "h5", "heading5": "h6",
-    # EASA-specific style names observed in the document
+    # EASA-specific style names found in XML
+    "heading2ir": "h2", "heading3ir": "h3", "heading4ir": "h4",
+    "heading4amc": "h3", "heading5amc": "h4", "heading6amc": "h5", "heading7amc": "h6",
+    "heading2gm": "h3", "heading3gm": "h4", "heading4gm": "h5", "heading5gm": "h6", "heading6gm": "h6",
+    "title": "h1", "easaheadertitle": "h1",
+    # legacy/fallback
     "ruletitle": "h2", "amctitle": "h3", "gmtitle": "h3",
-    "chaptertitle": "h2", "sectiontitle": "h3",
-    "regulatorysource": "p",  # treated as plain, styled via CSS class
 }
 LIST_STYLES = {"listparagraph", "list paragraph", "listbullet", "list bullet",
                "listnumber", "list number", "listcontinue"}
+
+EASA_BLOCK_TYPES = {
+    "heading2ir": "easa-rule",
+    "heading3ir": "easa-rule",
+    "heading4ir": "easa-rule",
+    "heading4amc": "easa-amc",
+    "heading5amc": "easa-amc",
+    "heading6amc": "easa-amc",
+    "heading2gm": "easa-gm",
+    "heading3gm": "easa-gm",
+    "heading4gm": "easa-gm",
+    "heading5gm": "easa-gm",
+    "heading6gm": "easa-gm",
+    "amctitle": "easa-amc",
+    "gmtitle": "easa-gm",
+    "ruletitle": "easa-rule",
+}
 
 
 def _tag(el: etree._Element) -> str:
@@ -65,22 +85,87 @@ class HtmlConverter:
     # Public entry point
     # ------------------------------------------------------------------
 
-    def sdt_to_html(self, sdt: etree._Element) -> str:
+    def sdt_to_html(self, sdt: etree._Element, title_to_skip: str | None = None) -> str:
         # The sdtContent element holds the actual content.
         content = sdt.find(f"{{{W}}}sdtContent")
         if content is None:
             content = sdt
+
+        # Flatten nested SDTs to process a linear sequence of paragraphs and tables.
+        elements = self._flatten_elements(content)
+
         parts = []
-        for child in content:
-            t = _tag(child)
+        current_block = None
+        skipped_title = False
+
+        for el in elements:
+            t = _tag(el)
+            style = ""
             if t == "p":
-                parts.append(self._para(child))
+                style = self._get_style(el)
+
+            # EASA blocks: any style containing AMC, GM or IR/Rule
+            block_type = self._get_block_type(style)
+            is_major_heading = style in ("heading1", "heading2", "chaptertitle")
+
+            if block_type or is_major_heading:
+                if current_block:
+                    parts.append("</div>\n")
+                    current_block = None
+                if block_type:
+                    parts.append(f'<div class="easa-block {block_type}">\n')
+                    current_block = block_type
+
+            if t == "p":
+                # Skip the first title paragraph if it's already in the header
+                if not skipped_title and title_to_skip:
+                    text = "".join(node.text for node in el.iter(f"{{{W}}}t") if node.text).strip()
+                    if text and (text in title_to_skip or title_to_skip in text):
+                        skipped_title = True
+                        continue
+
+                # Skip regulatory-source paragraphs — shown in the article header already
+                if self._get_style(el) == "regulatorysource":
+                    continue
+
+                html = self._para(el)
+                if html:
+                    parts.append(html)
             elif t == "tbl":
-                parts.append(self._table(child))
-            elif t == "sdt":
-                # Nested SDT — recurse
-                parts.append(self.sdt_to_html(child))
-        return "".join(p for p in parts if p)
+                parts.append(self._table(el))
+
+        if current_block:
+            parts.append("</div>\n")
+
+        return "".join(parts)
+
+    def _get_block_type(self, style: str) -> str | None:
+        s = style.lower()
+        if "amc" in s: return "easa-amc"
+        if "gm" in s:  return "easa-gm"
+        if "ir" in s or "rule" in s: return "easa-rule"
+        return None
+
+    def _flatten_elements(self, container: etree._Element) -> list[etree._Element]:
+        """Recursively collect paragraphs and tables, flattening nested SDTs."""
+        flat = []
+        for child in container:
+            t = _tag(child)
+            if t == "sdt":
+                content = child.find(f"{{{W}}}sdtContent")
+                if content is not None:
+                    flat.extend(self._flatten_elements(content))
+            elif t in ("p", "tbl"):
+                flat.append(child)
+        return flat
+
+    def _get_style(self, p: etree._Element) -> str:
+        pPr = p.find(f"{{{W}}}pPr")
+        if pPr is not None:
+            pStyle = pPr.find(f"{{{W}}}pStyle")
+            if pStyle is not None:
+                return (_attr(pStyle, W, "val") or "").lower().replace(" ", "")
+        return ""
 
     # ------------------------------------------------------------------
     # Paragraph
@@ -90,28 +175,60 @@ class HtmlConverter:
         pPr = p.find(f"{{{W}}}pPr")
         style = ""
         numPr = None
+        indent_style = ""
+        p_bold = p_italic = p_underline = False
         if pPr is not None:
             pStyle = pPr.find(f"{{{W}}}pStyle")
             if pStyle is not None:
                 style = (_attr(pStyle, W, "val") or "").lower().replace(" ", "")
             numPr = pPr.find(f"{{{W}}}numPr")
 
+            # Extract indentation (w:ind)
+            ind = pPr.find(f"{{{W}}}ind")
+            if ind is not None:
+                # Use 'left' for overall block indentation
+                left = _attr(ind, W, "left")
+                if left and left.isdigit():
+                    # Word twips to rem (1440 twips = 1 inch = approx 6rem)
+                    # So divide by 240 for a good scale.
+                    rem = int(left) / 240.0
+                    if rem > 0:
+                        indent_style = f'padding-left: {rem:.2f}rem;'
+
+            # Paragraph-level formatting (applies to all runs)
+            rPr = pPr.find(f"{{{W}}}rPr")
+            if rPr is not None:
+                p_bold = rPr.find(f"{{{W}}}b") is not None
+                p_italic = rPr.find(f"{{{W}}}i") is not None
+                p_underline = rPr.find(f"{{{W}}}u") is not None
+
         inline = self._inline_content(p)
         if not inline.strip():
             return ""
 
+        # Apply paragraph-level formatting if detected
+        if p_bold: inline = f"<strong>{inline}</strong>"
+        if p_italic: inline = f"<em>{inline}</em>"
+        if p_underline: inline = f"<u>{inline}</u>"
+
         tag = HEADING_STYLES.get(style, None)
         if tag and tag.startswith("h"):
-            return f"<{tag}>{inline}</{tag}>\n"
+            style_attr = f' style="{indent_style}"' if indent_style else ""
+            return f'<{tag}{style_attr}>{inline}</{tag}>\n'
 
-        css_class = ""
+        css_classes = []
         if style == "regulatorysource":
-            css_class = ' class="reg-source"'
-        elif style in LIST_STYLES or numPr is not None:
-            # We emit a plain <li>; the caller wraps in <ul>/<ol> if needed.
-            return f"<li>{inline}</li>\n"
+            css_classes.append("reg-source")
+        if "dxshortdesc" in style:
+            css_classes.append("reg-decision")
+        
+        css_class_attr = f' class="{" ".join(css_classes)}"' if css_classes else ""
+        final_style = f' style="{indent_style}"' if indent_style else ""
 
-        return f"<p{css_class}>{inline}</p>\n"
+        if style in LIST_STYLES or numPr is not None:
+            return f"<li{css_class_attr}{final_style}>{inline}</li>\n"
+
+        return f"<p{css_class_attr}{final_style}>{inline}</p>\n"
 
     # ------------------------------------------------------------------
     # Inline content (runs, hyperlinks, drawings within a paragraph)
@@ -173,13 +290,15 @@ class HtmlConverter:
         return text
 
     def _hyperlink(self, hl: etree._Element) -> str:
-        rid = _attr(hl, R, "id")
         # We don't resolve external hyperlinks for safety; just render the text.
+        # Recurse into nested hyperlinks (EASA cross-references are often doubly-wrapped).
         inner = ""
         for child in hl:
             t = _tag(child)
             if t == "r":
                 inner += self._run(child)
+            elif t == "hyperlink":
+                inner += self._hyperlink(child)
         return inner
 
     # ------------------------------------------------------------------

@@ -53,9 +53,16 @@ TITLE_RE = re.compile(
 
 CROSSREF_RE = re.compile(r"21\.A\.\d+[A-Z]?")
 
-# Subpart B (TCs) is 21.A.11..55; Subpart D (changes) is 21.A.90..109.
-SUBPART_B_RANGE = range(11, 56)
-SUBPART_D_RANGE = range(90, 110)
+# Subpart B  — Type Certificates          21.A.11  .. 21.A.55
+# Subpart D  — Changes to TCs             21.A.90  .. 21.A.109
+# Subpart E  — Supplemental TCs           21.A.111 .. 21.A.118B (num 111-118)
+# Subpart G  — Production Organisation    21.A.131 .. 21.A.165
+# Subpart J  — Design Organisation        21.A.231 .. 21.A.265
+SUBPART_B_RANGE = range(11,  56)
+SUBPART_D_RANGE = range(90,  110)
+SUBPART_E_RANGE = range(111, 119)
+SUBPART_G_RANGE = range(131, 166)
+SUBPART_J_RANGE = range(231, 266)
 
 
 @dataclass
@@ -238,7 +245,13 @@ def _in_scope(code: str) -> bool:
     if not m:
         return False
     num = int(m.group(1))
-    return num in SUBPART_B_RANGE or num in SUBPART_D_RANGE
+    return (
+        num in SUBPART_B_RANGE
+        or num in SUBPART_D_RANGE
+        or num in SUBPART_E_RANGE
+        or num in SUBPART_G_RANGE
+        or num in SUBPART_J_RANGE
+    )
 
 
 def _hierarchy_path(code: str, stack: tuple[str, ...]) -> str:
@@ -282,9 +295,9 @@ def parse_easa_xml(xml_path: Path) -> ParseResult:
         text = _sdt_text(sdt)
         if not text:
             continue
-        content_html = converter.sdt_to_html(sdt)
-        content_hash = hashlib.md5(text.encode("utf-8")).hexdigest()  # noqa: S324
         reference_code = row.title if "Appendix" in row.title else f"{_prefix(node_type)}{code}".strip()
+        content_html = converter.sdt_to_html(sdt, title_to_skip=reference_code)
+        content_hash = hashlib.md5(text.encode("utf-8")).hexdigest()  # noqa: S324
 
         node = ParsedNode(
             node_type=node_type,

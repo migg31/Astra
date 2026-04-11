@@ -12,6 +12,9 @@ export interface NodeDetail extends NodeSummary {
   content_text: string;
   content_html: string | null;
   content_hash: string;
+  regulatory_source: string | null;
+  applicability_date: string | null;
+  entry_into_force_date: string | null;
   confidence: number;
   created_at: string;
   updated_at: string;

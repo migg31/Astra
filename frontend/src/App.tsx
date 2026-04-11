@@ -13,6 +13,7 @@ import type {
 export default function App() {
   const [allNodes, setAllNodes] = useState<NodeSummary[] | null>(null);
   const [rootError, setRootError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const [selected, setSelected] = useState<NodeSummary | null>(null);
   const [detail, setDetail] = useState<NodeDetail | null>(null);
@@ -56,7 +57,31 @@ export default function App() {
     };
   }, [selected]);
 
-  const tree = useMemo(() => (allNodes ? buildTree(allNodes) : []), [allNodes]);
+  const filteredNodes = useMemo(() => {
+    if (!allNodes) return null;
+    if (!searchQuery.trim()) return allNodes;
+    const q = searchQuery.toLowerCase();
+    return allNodes.filter(
+      (n) =>
+        n.reference_code.toLowerCase().includes(q) ||
+        (n.title ?? "").toLowerCase().includes(q)
+    );
+  }, [allNodes, searchQuery]);
+
+  const tree = useMemo(() => (filteredNodes ? buildTree(filteredNodes) : []), [filteredNodes]);
+
+  // Set of bare IR reference codes (e.g. "21.A.20") that exist in our DB — used to
+  // determine whether a cross-reference in article text is navigable.
+  const knownRefs = useMemo(
+    () => new Set((allNodes ?? []).filter((n) => n.node_type === "IR").map((n) => n.reference_code)),
+    [allNodes]
+  );
+
+  function handleNavigateByRef(refCode: string) {
+    if (!allNodes) return;
+    const node = allNodes.find((n) => n.reference_code === refCode);
+    if (node) setSelected(node);
+  }
 
   if (rootError) {
     return (
@@ -77,8 +102,16 @@ export default function App() {
         tree={tree}
         selectedNodeId={selected?.node_id ?? null}
         onSelect={setSelected}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
       />
-      <ArticlePanel node={detail} loading={detailLoading} error={detailError} />
+      <ArticlePanel
+        node={detail}
+        loading={detailLoading}
+        error={detailError}
+        onNavigate={handleNavigateByRef}
+        knownRefs={knownRefs}
+      />
       <NeighborsPanel
         neighbors={neighbors}
         loading={detailLoading}
