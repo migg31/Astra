@@ -1,7 +1,7 @@
 [project]
-name = "certifexpert"
+name = "astra"
 version = "0.1.0"
-description = "CertifExpert — aviation Type Certification expertise platform (EASA Part 21)"
+description = "Astra — aviation Type Certification expertise platform (EASA Part 21)"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",

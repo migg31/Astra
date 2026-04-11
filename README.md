@@ -1,6 +1,6 @@
-# CertifExpert
+# Astra
 
-Aviation Type Certification expertise platform for EASA Part 21 professionals.
+Astra — Aviation Type Certification expertise platform for EASA Part 21 professionals.
 
 ## Phase 1 PoC — current scope
 

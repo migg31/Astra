@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to CertifExpert will be documented in this file.
+All notable changes to Astra will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.0] - 2026-04-11
 
 ### Added
-- **Initial Proof of Concept release** of CertifExpert, an aviation Type Certification expertise platform for EASA Part 21 professionals
+- **Initial Proof of Concept release** of Astra, an aviation Type Certification expertise platform for EASA Part 21 professionals
 - **HARVEST Module** - Automated regulatory data collection infrastructure
   - EASA Easy Access Rules scraper (Part 21, CS-25)
   - HTML to structured data conversion pipeline

@@ -5,7 +5,7 @@ from sqlalchemy import text
 from backend.api.routes import nodes as nodes_routes
 from backend.database.connection import engine
 
-app = FastAPI(title="CertifExpert API", version="0.1.0")
+app = FastAPI(title="Astra API", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
