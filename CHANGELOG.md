@@ -5,6 +5,33 @@ All notable changes to Astra will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [0.2.0] - 2026-04-11
+
+### Added
+- **Admin Console (UI)**: New slide-over control panel accessible via the ⚙️ icon in the topbar.
+- **System Health Monitoring**: Real-time connectivity status for PostgreSQL, ChromaDB, and Ollama.
+- **AI Model Verification**: Specific checks for `mistral` (chat) and `nomic-embed-text` (embedding) models on Ollama server.
+- **Live Statistics**:
+    - **Regulatory Inventory**: Document, Node, and Edge counts.
+    - **Storage Metrics**: SQL database size and Vector database file size on disk.
+    - **AI Status**: Total embeddings generated.
+- **Interactive Harvester**: Trigger EASA Part 21 synchronization directly from the UI with background task execution.
+- **Source Configuration**: Expandable section showing current regulatory sources and download URLs.
+
+### Improved
+- **Harvester Reliability**: Updated `User-Agent` to avoid HTTP 429 errors from EASA servers.
+- **UI Architecture**: Compacted vertical layout for better usability on standard displays.
+- **Visual Polish**: Tree-style health indicators with perfect CSS-drawn connectors and categorized stat cards with icons.
+- **API Routing**: Harmonized admin endpoints under `/api/admin/`.
+
+### Fixed
+- **404 Errors**: Corrected API prefixing for admin routes.
+- **UI Alignment**: Fixed vertical gaps in health status hierarchy and centered text alignment with tree symbols.
+
+---
+
 ## [0.1.0] - 2026-04-11
 
 ### Added
@@ -66,7 +93,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - LEARN module with structured learning paths
 - PRACTICE scenarios for change classification
 - Enhanced frontend with full UI implementation
-
----
-
-## [Unreleased]

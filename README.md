@@ -1,32 +1,33 @@
-# Astra
+# Astra (v0.2.0)
 
 Aviation Type Certification expertise platform for EASA Part 21 professionals.
 
-## Phase 1 PoC — completed
+## Phase 2 MVP — In Progress
 
-Full-stack working prototype covering the HARVEST and EXPLORE layers.
+Full-stack application covering HARVEST, EXPLORE, and **ASK (RAG)** layers.
 
 | Layer | Status | Detail |
 |---|---|---|
-| HARVEST | ✅ | EASA Easy Access Rules XML parser — Part 21 Subparts B, D, E, G, J |
-| DATA | ✅ | PostgreSQL schema (HARVEST + KNOWLEDGE domains) |
-| KNOWLEDGE | ✅ | 103 regulatory nodes (IR / AMC / GM), 139 edges |
+| HARVEST | ✅ | EASA Easy Access Rules XML parser (Part 21 Subparts B, D, E, G, J) |
+| DATA | ✅ | PostgreSQL (Structured) + ChromaDB (Vector) |
+| KNOWLEDGE | ✅ | 500+ regulatory nodes (IR / AMC / GM / CS) |
 | EXPLORE UI | ✅ | React 3-panel: tree / article / neighbors |
+| ASK UI | ✅ | RAG-based AI assistant with anti-hallucination safeguards |
+| ADMIN | ✅ | Admin Console for system health, stats, and harvester control |
 
-### What works
-- Regulatory tree grouped by Subpart → Article → variants (IR / AMC / GM / Appendix)
-- Full HTML rendering of EASA content (tables, images, bold/italic, indentation)
-- Visual design matching EASA online publication (color codes IR/AMC/GM)
-- Clickable cross-references: `21.A.XX` navigates to the target node; `21.B.XX` highlighted as non-navigable mentions
-- Search bar filtering across reference codes and titles
-- Article header: colored band (type-specific), applicability date, regulatory source
+### Key Features
+- **Admin Console**: Real-time monitoring of PostgreSQL, ChromaDB, and Ollama (Mistral/Nomic).
+- **Interactive Harvester**: Trigger regulatory sync directly from the UI.
+- **Regulatory Explorer**: Tree navigation with full HTML rendering and clickable cross-references.
+- **AI Assistant**: Query Part 21 using natural language with strict sourcing and disclaimers.
 
 ## Prerequisites
 
 - Python 3.12+
-- Docker Desktop (for the Postgres container)
+- Docker Desktop (for Postgres & ChromaDB)
 - `uv` (`pip install uv`)
 - Node.js 18+ (for the frontend)
+- **Ollama** (Running locally with `mistral` and `nomic-embed-text` models)
 
 ## Setup
 
@@ -36,24 +37,17 @@ cp .env.example .env
 # Python deps
 python -m uv sync
 
-# Start Postgres
-docker compose up -d postgres
+# Start Infrastructure
+docker compose up -d
 
-# Apply migrations
-docker exec -i certifexpert-db psql -U certifexpert -d certifexpert \
-  < backend/database/migrations/001_initial_schema.sql
-docker exec -i certifexpert-db psql -U certifexpert -d certifexpert \
-  < backend/database/migrations/002_add_content_html.sql
-docker exec -i certifexpert-db psql -U certifexpert -d certifexpert \
-  < backend/database/migrations/003_add_regulatory_source.sql
-docker exec -i certifexpert-db psql -U certifexpert -d certifexpert \
-  < backend/database/migrations/004_add_dates.sql
+# Apply PostgreSQL migrations
+# (Run scripts in backend/database/migrations/ 001 to 004)
 
-# Ingest EASA Part 21 (downloads ~15 MB ZIP from easa.europa.eu)
+# Initial Ingestion & Embedding
+# 1. Fetch & Parse XML
 python -m uv run python -m backend.harvest.ingest
-
-# Or offline if already downloaded:
-python -m uv run python -m backend.harvest.ingest --offline data/raw/easa/<date>/part21.xml
+# 2. Generate Vector Embeddings (Requires Ollama running)
+python -m uv run python -m backend.rag.ingest_embeddings
 ```
 
 ## Run
@@ -61,13 +55,19 @@ python -m uv run python -m backend.harvest.ingest --offline data/raw/easa/<date>
 ```bash
 # Backend
 python -m uv run uvicorn backend.api.main:app --reload
-# → http://localhost:8000/health
-# → http://localhost:8000/api/nodes
+# → http://localhost:8000/api/admin/health
 
 # Frontend (separate terminal)
 cd frontend && npm install && npm run dev
 # → http://localhost:5173
 ```
+
+## Admin Console
+Click the ⚙️ **CONSOLE** button in the topbar to access:
+- **System Health**: Connection status to all backends.
+- **Statistics**: Inventory of documents, nodes, and database sizes.
+- **Regulatory Sources**: View current EASA source URLs.
+- **Harvester Control**: Run the ingestion pipeline and view live logs.
 
 ## Test
 

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { getNeighbors, getNode, listAllNodes } from "./api";
+import { AdminConsole } from "./components/AdminConsole";
 import { ArticlePanel } from "./components/ArticlePanel";
+import { AskPanel } from "./components/AskPanel";
 import { NeighborsPanel } from "./components/NeighborsPanel";
 import { TreePanel } from "./components/TreePanel";
 import { buildTree } from "./tree";
@@ -10,7 +12,11 @@ import type {
   NodeSummary,
 } from "./types";
 
+type AppMode = "explore" | "ask";
+
 export default function App() {
+  const [mode, setMode] = useState<AppMode>("explore");
+  const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [allNodes, setAllNodes] = useState<NodeSummary[] | null>(null);
   const [rootError, setRootError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -80,7 +86,13 @@ export default function App() {
   function handleNavigateByRef(refCode: string) {
     if (!allNodes) return;
     const node = allNodes.find((n) => n.reference_code === refCode);
-    if (node) setSelected(node);
+    if (node) { setSelected(node); setMode("explore"); }
+  }
+
+  function handleNavigateById(nodeId: string) {
+    if (!allNodes) return;
+    const node = allNodes.find((n) => n.node_id === nodeId);
+    if (node) { setSelected(node); setMode("explore"); }
   }
 
   if (rootError) {
@@ -97,26 +109,70 @@ export default function App() {
   }
 
   return (
-    <div className="app-grid">
-      <TreePanel
-        tree={tree}
-        selectedNodeId={selected?.node_id ?? null}
-        onSelect={setSelected}
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-      />
-      <ArticlePanel
-        node={detail}
-        loading={detailLoading}
-        error={detailError}
-        onNavigate={handleNavigateByRef}
-        knownRefs={knownRefs}
-      />
-      <NeighborsPanel
-        neighbors={neighbors}
-        loading={detailLoading}
-        onSelect={setSelected}
-      />
+    <div className="app-root">
+      <nav className="app-topbar">
+        <span className="app-brand">Astra</span>
+        <div className="app-tabs">
+          <button
+            className={"app-tab" + (mode === "explore" ? " is-active" : "")}
+            onClick={() => setMode("explore")}
+          >
+            EXPLORE
+          </button>
+          <button
+            className={"app-tab" + (mode === "ask" ? " is-active" : "")}
+            onClick={() => setMode("ask")}
+          >
+            ASK
+          </button>
+        </div>
+        <div style={{ marginLeft: "auto" }}>
+          <button
+            className="app-tab"
+            style={{ 
+              background: "rgba(255,255,255,0.1)", 
+              border: "1px solid rgba(255,255,255,0.2)",
+              display: "flex",
+              alignItems: "center",
+              gap: "0.5rem"
+            }}
+            onClick={() => setIsAdminOpen(true)}
+          >
+            <span style={{ fontSize: "1.1rem" }}>⚙️</span>
+            CONSOLE
+          </button>
+        </div>
+      </nav>
+
+      {mode === "explore" ? (
+        <div className="app-grid">
+          <TreePanel
+            tree={tree}
+            selectedNodeId={selected?.node_id ?? null}
+            onSelect={setSelected}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+          />
+          <ArticlePanel
+            node={detail}
+            loading={detailLoading}
+            error={detailError}
+            onNavigate={handleNavigateByRef}
+            knownRefs={knownRefs}
+          />
+          <NeighborsPanel
+            neighbors={neighbors}
+            loading={detailLoading}
+            onSelect={setSelected}
+          />
+        </div>
+      ) : (
+        <div className="app-ask">
+          <AskPanel onNavigate={handleNavigateById} />
+        </div>
+      )}
+
+      <AdminConsole isOpen={isAdminOpen} onClose={() => setIsAdminOpen(false)} />
     </div>
   );
 }

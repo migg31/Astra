@@ -34,7 +34,16 @@
       "Bash(curl -sS -H \"Origin: http://localhost:5173\" \"http://127.0.0.1:8000/api/nodes?limit=3\")",
       "Bash(curl -sS \"http://localhost:5173/\")",
       "Bash(curl -sS \"http://localhost:5173/src/App.tsx\")",
-      "Bash(curl -sS -H \"Origin: http://localhost:5173\" -I \"http://127.0.0.1:8000/api/nodes?limit=1\")"
+      "Bash(curl -sS -H \"Origin: http://localhost:5173\" -I \"http://127.0.0.1:8000/api/nodes?limit=1\")",
+      "mcp__fetch__fetch",
+      "Bash(grep -o '.\\\\{0,60\\\\}21\\\\.A\\\\.\\\\|21\\\\.[A-Z]\\\\.')",
+      "Bash(python3 -c \"import sys, re; html=sys.stdin.read\\(\\); m=re.search\\(r'.{0,200}21\\\\.A\\\\.20.{0,200}', html\\); print\\(m.group\\(0\\) if m else 'NOT FOUND - searching for fragments:'\\); [print\\(repr\\(x\\)\\) for x in re.findall\\(r'.{0,30}21\\\\..{0,30}', html\\)[:5]]\")",
+      "Bash(python3 -c ':*)",
+      "Bash(cmd:*)",
+      "Bash(powershell:*)",
+      "Bash(ollama pull:*)",
+      "Bash(curl:*)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); [print\\(m['name']\\) for m in d.get\\('models',[]\\)]\")"
     ]
   }
 }

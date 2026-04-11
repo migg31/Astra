@@ -18,7 +18,7 @@ export function TreePanel({ tree, selectedNodeId, onSelect, searchQuery, onSearc
       <div className="tree-search">
         <input
           type="search"
-          placeholder="Rechercher…"
+          placeholder="Search…"
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}
           className="tree-search-input"
