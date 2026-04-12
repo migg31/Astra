@@ -56,7 +56,7 @@ async def list_nodes(
         description="Substring match on reference_code or title (case-insensitive).",
     ),
     hierarchy_prefix: str | None = None,
-    limit: int = Query(50, ge=1, le=10000),
+    limit: int = Query(50, ge=1, le=25000),
     offset: int = Query(0, ge=0),
     session: AsyncSession = Depends(get_session),
 ) -> NodeListResponse:

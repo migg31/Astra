@@ -45,7 +45,7 @@ export function getCatalog(): Promise<CatalogEntry[]> {
 }
 
 export function listAllNodes(): Promise<NodeListResponse> {
-  return fetchJSON<NodeListResponse>("/api/nodes?limit=10000");
+  return fetchJSON<NodeListResponse>("/api/nodes?limit=20000");
 }
 
 export function getNode(nodeId: string): Promise<NodeDetail> {
