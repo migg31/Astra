@@ -195,6 +195,29 @@ export function ArticlePanel({ node, loading, error, onNavigate, knownRefs, sibl
   useEffect(() => {
     const container = articleRef.current;
     if (!container || !node || !knownRefs) return;
+
+    // Strip leading metadata lines duplicated in the header (ED Decision, AMC No., See AMC...)
+    const HEADER_RE = /^\s*(?:ED\s+Decision\b|Commission\s+Regulation\b|\(See\s+(?:AMC|GM|CS)\b|\(See\s+also\b)/i;
+    const walk = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+    const toRemove: Node[] = [];
+    let n: Node | null;
+    while ((n = walk.nextNode())) {
+      const text = (n.textContent ?? "").trim();
+      if (!text) continue;
+      if (HEADER_RE.test(text)) {
+        // Remove the parent element if it's a simple block (p, div, span)
+        const p = n.parentElement;
+        if (p && ["P", "DIV", "SPAN", "B", "STRONG"].includes(p.tagName) && (p.textContent ?? "").trim() === text) {
+          toRemove.push(p);
+        } else {
+          toRemove.push(n);
+        }
+      } else {
+        break; // stop at first non-metadata line
+      }
+    }
+    toRemove.forEach(el => el.parentNode?.removeChild(el));
+
     const ownRefMatch = node.reference_code.match(/\b(?:[A-Z]+\.){1,3}[A-Z0-9]+(?:\.[A-Z0-9]+)*\b/);
     const ownRef = ownRefMatch ? ownRefMatch[0] : "";
     linkifyDom(container, ownRef, knownRefs);
