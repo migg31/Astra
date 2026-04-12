@@ -208,40 +208,6 @@ export function ArticlePanel({ node, loading, error, onNavigate, knownRefs, sibl
             <span className={`badge badge-${node.node_type}`}>{node.node_type}</span>
             <span className="article-ref">{node.reference_code}</span>
             {node.title && <span className="article-title-text">{node.title}</span>}
-            {/* Type pills — right-justified in the title row */}
-            {siblingGroups && (
-              <div className="article-variants-inline">
-                {Array.from(siblingGroups.entries()).map(([type, nodes]) => {
-                  const isActive = type === node.node_type;
-                  const isExpanded = expandedType === type;
-                  const multi = nodes.length > 1;
-                  function handleClick() {
-                    if (multi) {
-                      setExpandedType(isExpanded ? null : type);
-                    } else {
-                      onSelectSibling && onSelectSibling(nodes[0]);
-                      setExpandedType(null);
-                    }
-                  }
-                  return (
-                    <button
-                      key={type}
-                      className={`article-variant-tab variant-${type}${isActive ? " is-active" : ""}${isExpanded ? " is-expanded" : ""}`}
-                      onClick={handleClick}
-                      title={multi ? `${nodes.length} ${type} — cliquer pour lister` : undefined}
-                    >
-                      <span className={`badge badge-${type}`}>{type}</span>
-                      {multi && (
-                        <span className="variant-count">
-                          ×{nodes.length}
-                          <span className="variant-chevron">{isExpanded ? "▲" : "▼"}</span>
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
         </div>
 
         {/* Expanded list for multi-node types */}

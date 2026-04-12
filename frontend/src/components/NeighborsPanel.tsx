@@ -24,13 +24,28 @@ function metaFor(rel: string) {
   return RELATION_META[rel] ?? { label: rel, color: "#4b5563", bg: "#f3f4f6" };
 }
 
+const RELATION_ORDER = ["IMPLEMENTS", "ACCEPTABLE_MEANS", "GUIDANCE_FOR", "REQUIRES", "REFERENCES"];
+const TYPE_ORDER: Record<string, number> = { IR: 0, AMC: 1, GM: 2, CS: 3, GROUP: 4 };
+
 function groupByRelation(edges: EdgeOut[]): Map<string, EdgeOut[]> {
   const map = new Map<string, EdgeOut[]>();
   for (const e of edges) {
     if (!map.has(e.relation)) map.set(e.relation, []);
     map.get(e.relation)!.push(e);
   }
-  return map;
+  // Sort items within each group by node_type
+  for (const [, arr] of map) {
+    arr.sort((a, b) => (TYPE_ORDER[a.other.node_type] ?? 9) - (TYPE_ORDER[b.other.node_type] ?? 9));
+  }
+  // Sort groups by priority order
+  const sorted = new Map<string, EdgeOut[]>();
+  for (const rel of RELATION_ORDER) {
+    if (map.has(rel)) sorted.set(rel, map.get(rel)!);
+  }
+  for (const [rel, edges] of map) {
+    if (!sorted.has(rel)) sorted.set(rel, edges);
+  }
+  return sorted;
 }
 
 interface RelGroupProps {

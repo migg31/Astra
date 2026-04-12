@@ -1096,32 +1096,8 @@ body,
   display: flex;
   align-items: center;
   gap: 0.35rem;
-  margin-left: auto;
   flex-shrink: 0;
 }
-/* Pills inside the colored header band */
-.article-variants-inline .article-variant-tab {
-  background: rgba(255,255,255,0.15);
-  border-color: rgba(255,255,255,0.4);
-  color: #ffffff;
-}
-.article-variants-inline .article-variant-tab:hover:not(:disabled) {
-  background: rgba(255,255,255,0.28);
-  border-color: rgba(255,255,255,0.65);
-}
-/* Active pill: solid type color, white text */
-.article-variants-inline .article-variant-tab.variant-IR.is-active  { background: #007FC2; border-color: #005691; color: #fff; }
-.article-variants-inline .article-variant-tab.variant-AMC.is-active { background: #e6a800; border-color: #b37f00; color: #1a1a1a; }
-.article-variants-inline .article-variant-tab.variant-GM.is-active  { background: #16CC7F; border-color: #0a9a5e; color: #fff; }
-.article-variants-inline .article-variant-tab.variant-CS.is-active  { background: #A25EAB; border-color: #7a3d82; color: #fff; }
-/* Override badge colors inside inline pills — must beat .article-header-title .badge */
-.article-header-title .article-variants-inline .article-variant-tab .badge                        { background: rgba(255,255,255,0.25); color: #fff; }
-.article-header-title .article-variants-inline .article-variant-tab.variant-IR.is-active  .badge { background: #007FC2; color: #fff; }
-.article-header-title .article-variants-inline .article-variant-tab.variant-AMC.is-active .badge { background: #e6a800; color: #1a1a1a; }
-.article-header-title .article-variants-inline .article-variant-tab.variant-GM.is-active  .badge { background: #16CC7F; color: #fff; }
-.article-header-title .article-variants-inline .article-variant-tab.variant-CS.is-active  .badge { background: #A25EAB; color: #fff; }
-.article-variants-inline .variant-count { color: rgba(255,255,255,0.8); }
-.article-variants-inline .article-variant-tab.is-active .variant-count { color: inherit; opacity: 0.75; }
 
 .article-header-title .badge {
   background: rgba(255,255,255,0.25);
@@ -1143,10 +1119,10 @@ body,
 /* Meta line: hierarchy left, dates + regulatory source right */
 .article-header-meta {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding: 0.5rem 1.5rem;
+  padding: 0.2rem 1.5rem;
   background: #f9fafb;
 }
 .article-hierarchy {
@@ -1190,13 +1166,13 @@ body,
   display: flex;
   align-items: center;
   gap: 0.375rem;
-  padding: 0.3rem 0.75rem;
-  border: 1px solid #e5e7eb;
+  padding: 0.3rem 0.85rem;
+  border: none;
   border-radius: 20px;
   background: #ffffff;
-  font-size: 0.75rem;
+  font-size: 0.8rem;
   font-family: inherit;
-  font-weight: 500;
+  font-weight: 600;
   color: #6b7280;
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s;
