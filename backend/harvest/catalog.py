@@ -175,8 +175,9 @@ CATALOG: list[CatalogEntry] = [
         category="cs",
         domain="initial-airworthiness",
         description="Certification specifications for large aeroplanes (MTOW > 5 700 kg).",
-        easa_url="https://www.easa.europa.eu/en/document-library/certification-specifications/cs-25-amendment-27",
+        easa_url="https://www.easa.europa.eu/en/document-library/certification-specifications/cs-25-amendment-28",
         doc_title_pattern="CS-25%",
+        harvest_key="cs-25",
     ),
     CatalogEntry(
         id="cs-23",
@@ -250,8 +251,9 @@ CATALOG: list[CatalogEntry] = [
         category="cs",
         domain="avionics",
         description="Certification specifications for airborne communications, navigation and surveillance.",
-        easa_url="https://www.easa.europa.eu/en/document-library/certification-specifications/cs-acns-issue-4",
+        easa_url="https://www.easa.europa.eu/en/document-library/certification-specifications/cs-acns-issue-5",
         doc_title_pattern="CS-ACNS %",
+        harvest_key="cs-acns",
     ),
     CatalogEntry(
         id="cs-awo",

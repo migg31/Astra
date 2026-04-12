@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { CatalogEntry } from "../api";
 import type { DocumentInfo, NodeSummary, NodeType } from "../types";
 import type { SubpartGroup } from "../tree";
+import { DocumentHistoryPanel } from "./DocumentHistoryPanel";
 
 // ─── Domain palette (same as NavigatePanel) ───────────────────
 const DOMAIN_META: Record<string, { bg: string; text: string; border: string; label: string }> = {
@@ -147,6 +148,11 @@ export function TreePanel({
   onSelectSource,
 }: Props) {
   const isSearching = searchQuery.trim().length > 0;
+  const [showHistory, setShowHistory] = useState(false);
+
+  // Derive source_key from catalog for the selected source
+  const activeEntry = catalog.find((e) => e.source_root === selectedSource);
+  const historySourceKey = activeEntry?.harvest_key ?? null;
 
   // Compute all collapsible keys from the current tree
   const allKeys = useMemo(() => {
@@ -176,7 +182,19 @@ export function TreePanel({
   }
 
   return (
-    <nav className="tree-panel">
+    <nav className="tree-panel" style={{ position: "relative", overflow: "hidden" }}>
+
+      {/* ── Document History overlay ── */}
+      {showHistory && historySourceKey && activeEntry && (
+        <div style={{ position: "absolute", inset: 0, zIndex: 10, background: "#fff" }}>
+          <DocumentHistoryPanel
+            sourceKey={historySourceKey}
+            sourceLabel={activeEntry.name}
+            onClose={() => setShowHistory(false)}
+          />
+        </div>
+      )}
+
       {/* ── DocPicker ── */}
       <DocPicker
         catalog={catalog}
@@ -184,6 +202,17 @@ export function TreePanel({
         selectedSource={selectedSource}
         onSelectSource={onSelectSource}
       />
+
+      {/* ── History button ── */}
+      {historySourceKey && (
+        <button
+          className="tree-history-btn"
+          onClick={() => setShowHistory(true)}
+          title="Historique des versions"
+        >
+          <span>📋</span> Historique des versions
+        </button>
+      )}
 
       {/* ── Type filters ── */}
       {availableTypes.length > 1 && (

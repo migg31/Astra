@@ -111,6 +111,36 @@ export function getVersionCheck(): Promise<VersionCheckResult[]> {
   return fetchJSON<VersionCheckResult[]>("/api/history/version-check");
 }
 
+// Document version history API
+export interface DocumentVersion {
+  version_id: string;
+  source_key: string;
+  source_label: string;
+  version_label: string;
+  pub_date: string | null;
+  url: string;
+  doc_type: "xml" | "pdf";
+  is_indexed: boolean;
+  is_latest_pdf: boolean;
+  xml_doc_id: string | null;
+  node_count: number | null;
+}
+
+export interface DocumentHistory {
+  source_key: string;
+  source_label: string;
+  versions: DocumentVersion[];
+  indexed_version: DocumentVersion | null;
+}
+
+export function getDocHistory(sourceKey: string): Promise<DocumentHistory> {
+  return fetchJSON<DocumentHistory>(`/api/doc-history/${sourceKey}`);
+}
+
+export function getAllDocHistories(): Promise<DocumentHistory[]> {
+  return fetchJSON<DocumentHistory[]>("/api/doc-history");
+}
+
 // Admin API
 export function getStats(): Promise<SystemStats> {
   return fetchJSON<SystemStats>("/api/admin/stats");

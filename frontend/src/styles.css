@@ -2819,3 +2819,203 @@ body,
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ── Tree history button ── */
+.tree-history-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  padding: 0.35rem 0.75rem;
+  background: #f8fafc;
+  border: none;
+  border-bottom: 1px solid #e5e7eb;
+  font-size: 0.72rem;
+  font-family: inherit;
+  color: #2563eb;
+  cursor: pointer;
+  text-align: left;
+}
+.tree-history-btn:hover { background: #eff6ff; }
+
+/* ── Document History Panel ─────────────────────────────────── */
+.doc-history-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #ffffff;
+  overflow: hidden;
+}
+.doc-history-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #e5e7eb;
+  flex-shrink: 0;
+}
+.doc-history-title {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+.doc-history-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #111827;
+}
+.doc-history-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #6b7280;
+  font-size: 1rem;
+  padding: 0.25rem;
+  border-radius: 4px;
+  line-height: 1;
+}
+.doc-history-close:hover { background: #f3f4f6; color: #111827; }
+.doc-history-loading,
+.doc-history-error {
+  padding: 1rem;
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+.doc-history-error { color: #dc2626; }
+
+/* ── Timeline ── */
+.doc-history-timeline {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.75rem 1rem 1.5rem 1.25rem;
+}
+.timeline-entry {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+.timeline-line {
+  width: 2px;
+  min-height: 16px;
+  background: #d1d5db;
+  margin-left: 7px;
+  flex-shrink: 0;
+}
+.timeline-line--dashed {
+  background: repeating-linear-gradient(
+    to bottom,
+    #d1d5db 0px, #d1d5db 4px,
+    transparent 4px, transparent 8px
+  );
+}
+.timeline-dot-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.625rem;
+}
+.timeline-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #9ca3af;
+  border: 2px solid #ffffff;
+  outline: 2px solid #d1d5db;
+  flex-shrink: 0;
+  margin-top: 3px;
+}
+.timeline-entry-content {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  padding-bottom: 2px;
+}
+.timeline-version-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #374151;
+}
+.timeline-version-date {
+  font-size: 0.72rem;
+  color: #9ca3af;
+}
+.timeline-pdf-link {
+  font-size: 0.72rem;
+  color: #2563eb;
+  text-decoration: none;
+  padding: 0.1rem 0.4rem;
+  border: 1px solid #bfdbfe;
+  border-radius: 4px;
+  background: #eff6ff;
+  white-space: nowrap;
+}
+.timeline-pdf-link:hover { background: #dbeafe; }
+
+/* ── Indexed card ── */
+.timeline-entry--indexed .timeline-indexed-card {
+  margin-left: 0;
+  border: 2px solid #2563eb;
+  border-radius: 8px;
+  padding: 0.6rem 0.75rem;
+  background: #eff6ff;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.timeline-indexed-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.timeline-indexed-icon { font-size: 0.9rem; }
+.timeline-indexed-tag {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #1d4ed8;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.timeline-pill {
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 0.1rem 0.4rem;
+  border-radius: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.timeline-pill--latest {
+  background: #d1fae5;
+  color: #065f46;
+  border: 1px solid #6ee7b7;
+}
+.timeline-pill--warn {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fcd34d;
+}
+.timeline-indexed-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.timeline-indexed-info strong {
+  font-size: 0.82rem;
+  color: #1e3a8a;
+}
+.timeline-indexed-type {
+  font-size: 0.72rem;
+  color: #3b82f6;
+  background: #dbeafe;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+}
+.timeline-indexed-nodes {
+  font-size: 0.72rem;
+  color: #6b7280;
+}
+.timeline-indexed-date {
+  font-size: 0.72rem;
+  color: #6b7280;
+}

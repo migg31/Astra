@@ -481,5 +481,6 @@ async def get_catalog(db: AsyncSession = Depends(get_session)):
             "pub_date": info["pub_date"] if info else None,
             "amended_by": info["amended_by"] if info else None,
             "node_count": node_count,
+            "harvest_key": entry.harvest_key,
         })
     return result
