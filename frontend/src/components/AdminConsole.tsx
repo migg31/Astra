@@ -182,7 +182,7 @@ export function AdminConsole({ onClose }: AdminConsoleProps) {
 
             <div style={{ display: "flex", gap: "1.25rem", alignItems: "flex-start", width: "100%" }}>
               {/* Source selector */}
-              <div className="admin-card" style={{ width: 300, flexShrink: 0 }}>
+              <div className="admin-card" style={{ flex: "1 1 0", minWidth: 0 }}>
                 <h2 className="admin-card-title">Select Sources</h2>
                 <div className="admin-source-checklist">
                   {sources.length === 0 && (
@@ -255,14 +255,33 @@ export function AdminConsole({ onClose }: AdminConsoleProps) {
               </div>
 
               {/* Log panel */}
-              <div className="admin-card" style={{ flex: 1, minWidth: 320 }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem" }}>
-                  <h2 className="admin-card-title" style={{ margin: 0 }}>Live Log</h2>
+              <div className="admin-card" style={{ flex: "2 1 0", minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.75rem" }}>
+                  <h2 className="admin-card-title" style={{ margin: 0, flex: 1 }}>Live Log</h2>
                   {harvester?.last_run_at && !harvester.is_running && (
-                    <span style={{ fontSize: "0.7rem", color: "#64748b" }}>
-                      Last run: {new Date(harvester.last_run_at).toLocaleString("fr-FR")}
+                    <span style={{ fontSize: "0.7rem", color: "#94a3b8" }}>
+                      {new Date(harvester.last_run_at).toLocaleString("fr-FR")}
                     </span>
                   )}
+                  <button
+                    className="admin-action-btn"
+                    title="Copy log to clipboard"
+                    onClick={() => {
+                      const text = harvester?.log_lines?.join("\n") ?? "";
+                      navigator.clipboard.writeText(text);
+                    }}
+                    disabled={!harvester?.log_lines?.length}
+                  >
+                    Copy
+                  </button>
+                  <button
+                    className="admin-action-btn admin-action-btn--danger"
+                    title="Clear log"
+                    onClick={() => setHarvester(h => h ? { ...h, log_lines: [] } : h)}
+                    disabled={!harvester?.log_lines?.length}
+                  >
+                    Clear
+                  </button>
                 </div>
                 <pre className="admin-log admin-log--tall" ref={logRef}>
                   {harvester?.log_lines && harvester.log_lines.length > 0
