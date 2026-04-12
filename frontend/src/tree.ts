@@ -284,7 +284,11 @@ export function buildTree(nodes: NodeSummary[]): SubpartGroup[] {
       return ia !== ib ? ia - ib : a.name.localeCompare(b.name);
     });
   } else {
-    result.sort((a, b) => a.name.localeCompare(b.name));
+    result.sort((a, b) => {
+      if (a.name === "Other") return 1;
+      if (b.name === "Other") return -1;
+      return a.name.localeCompare(b.name);
+    });
   }
   return result;
 }
