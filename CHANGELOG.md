@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-04-12
+
+### Added
+- **Version History drawer**: Collapsible panel pinned to the bottom of the left sidebar, replacing the modal overlay. Shows a flat dense list (changelog style) of all known amendments/editions per document, with badges (indexed, latest, XML, node count, not-latest warning) and a download link with confirmation dialog before triggering EASA PDF download.
+- **Resizable left panel**: Drag handle on the right edge of the sidebar allows resizing between 180px and 520px.
+- **NeighborsPanel sorting**: Relation groups now ordered by priority (IMPLEMENTS → ACCEPTABLE_MEANS → GUIDANCE_FOR → REQUIRES → REFERENCES); items within each group sorted by node type (IR → AMC → GM → CS).
+
+### Changed
+- **Version History UI**: Replaced timeline/vertical-connector layout with a flat dense list (`dhl-*` components). Each row: INDEXED chip · version label · badges · date · ↗ download button.
+- **History trigger**: Moved from a standalone button in the main bandeau to a collapsible drawer at the bottom of the TreePanel. Header always visible, collapses to header-only height when closed and sticks to the bottom of the panel.
+- **Type pills**: Removed from article header title band and from meta-line — information is already present in the NeighborsPanel.
+- **Node history button**: Removed from ArticlePanel (unused feature).
+- **Language enforcement**: All UI labels and code are now strictly English throughout the codebase.
+
+### Fixed
+- **CORS**: Added PATCH, DELETE, OPTIONS to allowed methods in FastAPI CORS middleware.
+- **Harvester `enabled` flag**: Ingestion now correctly skips sources with `enabled=False`.
+- **Download confirmation**: EASA links now prompt for confirmation before triggering browser download.
+
+### Removed
+- Debug scripts: `check_catalog.py`, `check_patterns.py`, `check_schema.py`, `check_titles.py`, `watch_harvest.py`.
+- `mockup-history.html` (temporary design mockup).
+
 ## [0.4.0] - 2026-04-12
 
 ### Added

@@ -1,6 +1,6 @@
 [project]
 name = "astra"
-version = "0.2.0"
+version = "0.5.0"
 description = "Astra — aviation Type Certification expertise platform (EASA Part 21)"
 requires-python = ">=3.12"
 dependencies = [
