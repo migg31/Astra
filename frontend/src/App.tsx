@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getCatalog, getGraph, getNeighbors, getNode, getVersionCheck, listAllNodes } from "./api";
 import type { CatalogEntry, VersionCheckResult } from "./api";
 import { AdminConsole } from "./components/AdminConsole";
@@ -212,6 +212,29 @@ export default function App() {
     }
   }
 
+  // ── Resizable left panel ──
+  const [leftWidth, setLeftWidth] = useState(280);
+  const isDragging = useRef(false);
+
+  const onDragStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isDragging.current = true;
+    const startX = e.clientX;
+    const startW = leftWidth;
+    const onMove = (ev: MouseEvent) => {
+      if (!isDragging.current) return;
+      const next = Math.min(520, Math.max(180, startW + ev.clientX - startX));
+      setLeftWidth(next);
+    };
+    const onUp = () => {
+      isDragging.current = false;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }, [leftWidth]);
+
   // ── Render ──
 
   if (allNodes === null) {
@@ -273,21 +296,24 @@ export default function App() {
       )}
 
       {mode === "consult" && (
-        <div className="app-grid">
-          <TreePanel
-            availableTypes={availableTypes}
-            activeTypes={activeTypes}
-            onToggleType={handleToggleType}
-            tree={tree}
-            selectedNodeId={selected?.node_id ?? null}
-            onSelect={setSelected}
-            searchQuery={searchQuery}
-            onSearchChange={setSearchQuery}
-            documents={documents}
-            selectedSource={selectedSource}
-            onSelectSource={handleSelectSource}
-            catalog={catalog}
-          />
+        <div className="app-grid" style={{ gridTemplateColumns: `${leftWidth}px 1fr 280px` }}>
+          <div style={{ position: "relative", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+            <TreePanel
+              availableTypes={availableTypes}
+              activeTypes={activeTypes}
+              onToggleType={handleToggleType}
+              tree={tree}
+              selectedNodeId={selected?.node_id ?? null}
+              onSelect={setSelected}
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
+              documents={documents}
+              selectedSource={selectedSource}
+              onSelectSource={handleSelectSource}
+              catalog={catalog}
+            />
+            <div className="resize-handle" onMouseDown={onDragStart} />
+          </div>
           <ArticlePanel
             node={detail}
             loading={detailLoading}
