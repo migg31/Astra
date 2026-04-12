@@ -9,14 +9,14 @@ Anti-hallucination constraints are enforced at the prompt level:
 """
 from __future__ import annotations
 
-from openai import OpenAI
+from fastapi import HTTPException
+from openai import OpenAI, APIConnectionError
 
-OLLAMA_BASE_URL = "http://localhost:11434/v1"
-CHAT_MODEL = "mistral"
+from backend.config import settings
 
 _client: OpenAI | None = None
 
-SYSTEM_PROMPT = """You are Astra, a regulatory knowledge assistant specialised in EASA Part 21 aviation certification.
+SYSTEM_PROMPT = """You are Astra, a regulatory knowledge assistant specialised in EASA aviation regulations.
 
 STRICT RULES — you must follow them without exception:
 1. Answer ONLY using the regulatory excerpts provided. Quote or paraphrase them directly.
@@ -51,20 +51,26 @@ def answer(question: str, hits: list[dict]) -> str:
         f"QUESTION: {question}"
     )
     client = _get_client()
-    response = client.chat.completions.create(
-        model=CHAT_MODEL,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user",   "content": user_message},
-        ],
-        temperature=0.1,   # low temperature for factual/regulatory answers
-        max_tokens=1024,
-    )
+    try:
+        response = client.chat.completions.create(
+            model=settings.ollama_model,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user",   "content": user_message},
+            ],
+            temperature=0.1,
+            max_tokens=1024,
+        )
+    except APIConnectionError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="AI service unavailable — make sure Ollama is running.",
+        ) from exc
     return response.choices[0].message.content or ""
 
 
 def _get_client() -> OpenAI:
     global _client
     if _client is None:
-        _client = OpenAI(base_url=OLLAMA_BASE_URL, api_key="ollama")
+        _client = OpenAI(base_url=settings.ollama_base_url, api_key="ollama")
     return _client

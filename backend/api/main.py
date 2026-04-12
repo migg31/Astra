@@ -8,17 +8,13 @@ from backend.api.routes import nodes as nodes_routes
 from backend.api.routes import admin as admin_routes
 from backend.api.routes import history as history_routes
 from backend.api.routes import doc_history as doc_history_routes
+from backend.config import settings
 from backend.database.connection import engine
 
 app = FastAPI(title="Astra API", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173", 
-        "http://127.0.0.1:5173",
-        "http://localhost:5174",
-        "http://127.0.0.1:5174"
-    ],
+    allow_origins=settings.cors_origins,
     allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )

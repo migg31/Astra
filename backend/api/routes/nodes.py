@@ -3,6 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import load_only
 
 from backend.api.schemas import (
     EdgeOut,
@@ -60,7 +61,14 @@ async def list_nodes(
     offset: int = Query(0, ge=0),
     session: AsyncSession = Depends(get_session),
 ) -> NodeListResponse:
-    stmt = select(RegulatoryNode)
+    stmt = select(RegulatoryNode).options(load_only(
+        RegulatoryNode.node_id,
+        RegulatoryNode.node_type,
+        RegulatoryNode.reference_code,
+        RegulatoryNode.title,
+        RegulatoryNode.hierarchy_path,
+        RegulatoryNode.regulatory_source,
+    ))
     count_stmt = select(func.count()).select_from(RegulatoryNode)
 
     filters = []
