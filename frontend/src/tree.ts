@@ -35,7 +35,10 @@ export function articleCode(node: NodeSummary): string {
   // Strip leading type prefix: "AMC1 ", "GM2 ", "CS ", "AMC ", "GM " …
   const bare = node.reference_code.replace(/^(?:AMC\d*|GM\d*|CS)\s+/, "");
   // Strip trailing sub-paragraph refs: "(a)", "(b)(1)", "(a);(b)" …
-  return bare.replace(/\s*\(.*$/, "").trim();
+  const noParens = bare.replace(/\s*\(.*$/, "").trim();
+  // Strip trailing descriptive text after the article number (e.g. "25.1302 Explanatory material")
+  // Keep only the first token that looks like an article code (contains digits or dots)
+  return noParens.replace(/^(\S+)\s+.+$/, "$1").trim();
 }
 
 /** Sort IR/CS first (base articles), then AMC, then GM. */
