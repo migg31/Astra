@@ -205,7 +205,7 @@ export function getSystemConfig(): Promise<SystemConfig> {
   return fetchJSON<SystemConfig>("/api/admin/config");
 }
 
-export async function startHarvester(sources: string | string[] = "part21"): Promise<{ message: string }> {
+export async function startHarvester(sources: string | string[]): Promise<{ message: string }> {
   const sourceList = Array.isArray(sources) ? sources : [sources];
   const res = await fetch(`${API_BASE}/api/admin/harvester/run`, {
     method: "POST",

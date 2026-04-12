@@ -32,7 +32,7 @@ export function AskPanel({ onNavigate }: Props) {
     <div className="ask-panel">
       <div className="ask-header">
         <h2>ASK</h2>
-        <p className="ask-subtitle">Ask a regulatory question about EASA Part 21</p>
+        <p className="ask-subtitle">Ask a regulatory question about EASA regulations</p>
       </div>
 
       <form onSubmit={handleSubmit} className="ask-form">
@@ -40,7 +40,7 @@ export function AskPanel({ onNavigate }: Props) {
           className="ask-input"
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
-          placeholder="e.g. When is a change classified as Major under 21.A.91?"
+          placeholder="e.g. When is a design change classified as Major?"
           rows={3}
           disabled={loading}
         />

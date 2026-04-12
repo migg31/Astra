@@ -62,8 +62,7 @@ export default function App() {
         const docs = buildDocuments(resp.items);
         if (docs.length > 0) setSelectedSource(docs[0].source);
         // Auto-select default article
-        const defaultNode =
-          resp.items.find((n) => n.reference_code === "21.A.91") ?? resp.items[0];
+        const defaultNode = resp.items[0];
         if (defaultNode) setSelected(defaultNode);
       })
       .catch((err: Error) => {
