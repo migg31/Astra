@@ -66,8 +66,8 @@ CSACNS_VERSIONS: list[dict] = [
     {"version_label": "Issue 3",       "url": f"{EASA}/en/downloads/128205/en", "pub_date": date(2019,  7, 19), "doc_type": "pdf"},
     {"version_label": "Issue 4",       "url": f"{EASA}/en/downloads/136330/en", "pub_date": date(2021, 11, 26), "doc_type": "pdf"},
     {"version_label": "Issue 5",       "url": f"{EASA}/en/downloads/139873/en", "pub_date": date(2023,  7, 21), "doc_type": "pdf", "is_latest_pdf": True},
-    # XML Easy Access Rules — same version as Issue 5 PDF
-    {"version_label": "Issue 5",       "url": f"{EASA}/en/downloads/136674/en", "pub_date": date(2023,  7, 21), "doc_type": "xml"},
+    # XML Easy Access Rules — the harvester fetches Issue 4 XML (136674); Issue 5 XML not yet published
+    {"version_label": "Issue 4",       "url": f"{EASA}/en/downloads/136674/en", "pub_date": date(2022,  4,  6), "doc_type": "xml"},
 ]
 
 CSACNS_SOURCE = {
