@@ -32,6 +32,9 @@ export interface SubpartGroup {
  *   "AMC ACNS.B.GEN.1005"  → "ACNS.B.GEN.1005"
  */
 export function articleCode(node: NodeSummary): string {
+  // "Appendix X to GM/AMC/CS article_code" → extract the article code after "to GM/AMC/CS"
+  const appMatch = node.reference_code.match(/\bto\s+(?:AMC\d*|GM\d*|CS)\s+([\w.]+)/i);
+  if (appMatch) return appMatch[1].replace(/\([^)]*\).*$/, "").trim();
   // Strip leading type prefix: "AMC1 ", "GM2 ", "CS ", "AMC ", "GM " …
   const bare = node.reference_code.replace(/^(?:AMC\d*|GM\d*|CS)\s+/, "");
   // Strip trailing sub-paragraph refs: "(a)", "(b)(1)", "(a);(b)" …
