@@ -2849,7 +2849,47 @@ body,
   flex-shrink: 0;
 }
 
-/* ── Tree history button ── */
+/* ── Tree scroll area ── */
+.tree-scroll-area {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+/* ── History drawer at bottom of tree panel ── */
+.tree-history-drawer {
+  flex-shrink: 0;
+  border-top: 1px solid #e5e7eb;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  max-height: 45%;
+}
+.tree-history-drawer-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 1rem;
+  background: #f9fafb;
+  border: none;
+  width: 100%;
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #374151;
+  text-align: left;
+}
+.tree-history-drawer-header:hover { background: #f3f4f6; }
+.tree-history-drawer-chevron { font-size: 0.55rem; color: #9ca3af; }
+.tree-history-drawer-label { flex: 1; }
+.tree-history-drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+.tree-history-drawer-body .dhl-header { display: none; }
+
+/* ── Tree history button (legacy) ── */
 .tree-history-btn {
   display: flex;
   align-items: center;

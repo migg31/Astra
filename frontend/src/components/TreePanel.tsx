@@ -190,18 +190,7 @@ export function TreePanel({
   }
 
   return (
-    <nav className="tree-panel" style={{ position: "relative", overflow: "hidden" }}>
-
-      {/* ── Document History overlay ── */}
-      {showHistory && historySourceKey && activeEntry && (
-        <div style={{ position: "absolute", inset: 0, zIndex: 10, background: "#fff" }}>
-          <DocumentHistoryPanel
-            sourceKey={historySourceKey}
-            sourceLabel={activeEntry.name}
-            onClose={() => setShowHistory(false)}
-          />
-        </div>
-      )}
+    <nav className="tree-panel">
 
       {/* ── DocPicker ── */}
       <DocPicker
@@ -209,7 +198,7 @@ export function TreePanel({
         documents={documents}
         selectedSource={selectedSource}
         onSelectSource={onSelectSource}
-        onShowHistory={historySourceKey ? () => setShowHistory(true) : null}
+        onShowHistory={null}
       />
 
       {/* ── Type filters ── */}
@@ -332,6 +321,28 @@ export function TreePanel({
               </section>
             );
           })}
+        </div>
+      )}
+
+      {/* ── History drawer ── */}
+      {historySourceKey && activeEntry && (
+        <div className="tree-history-drawer">
+          <button
+            className="tree-history-drawer-header"
+            onClick={() => setShowHistory((v) => !v)}
+          >
+            <span className="tree-history-drawer-chevron">{showHistory ? "▼" : "▶"}</span>
+            <span className="tree-history-drawer-label">Historique des versions</span>
+          </button>
+          {showHistory && (
+            <div className="tree-history-drawer-body">
+              <DocumentHistoryPanel
+                sourceKey={historySourceKey}
+                sourceLabel={activeEntry.name}
+                onClose={() => setShowHistory(false)}
+              />
+            </div>
+          )}
         </div>
       )}
     </nav>
