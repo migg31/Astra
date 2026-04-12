@@ -576,6 +576,7 @@ body,
   flex-direction: column;
   overflow: hidden;
   font-size: 0.875rem;
+  height: 100%;
 }
 
 /* ── Document selector ── */
