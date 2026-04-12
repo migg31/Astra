@@ -42,6 +42,7 @@ CATALOG: list[CatalogEntry] = [
         description="Implementing rules for certification of aircraft, engines, propellers and parts.",
         easa_url="https://www.easa.europa.eu/en/document-library/easy-access-rules/easy-access-rules-part-21-edition-22",
         doc_title_pattern="%Initial Airworthiness%",
+        harvest_key="part-21",
     ),
     CatalogEntry(
         id="part-26",
@@ -52,6 +53,7 @@ CATALOG: list[CatalogEntry] = [
         description="Additional airworthiness requirements for operations.",
         easa_url="https://www.easa.europa.eu/en/document-library/easy-access-rules/easy-access-rules-additional-airworthiness-specifications-2",
         doc_title_pattern="%Additional Airworthiness%",
+        harvest_key="part-26",
     ),
 
     # ── Implementing Rules — Continuing Airworthiness ─────────────────────────
@@ -65,6 +67,7 @@ CATALOG: list[CatalogEntry] = [
         easa_url="https://www.easa.europa.eu/en/document-library/easy-access-rules/easy-access-rules-continuing-airworthiness",
         doc_title_pattern="%Continuing Airworthiness%",
         ref_code_pattern=r"\yM\.",
+        harvest_key="continuing-airworthiness",
     ),
     CatalogEntry(
         id="part-145",
@@ -76,6 +79,7 @@ CATALOG: list[CatalogEntry] = [
         easa_url="https://www.easa.europa.eu/en/document-library/easy-access-rules/easy-access-rules-continuing-airworthiness",
         doc_title_pattern="%Continuing Airworthiness%",
         ref_code_pattern=r"\y145\.",
+        harvest_key="continuing-airworthiness",
     ),
     CatalogEntry(
         id="part-66",
@@ -87,6 +91,7 @@ CATALOG: list[CatalogEntry] = [
         easa_url="https://www.easa.europa.eu/en/document-library/easy-access-rules/easy-access-rules-continuing-airworthiness",
         doc_title_pattern="%Continuing Airworthiness%",
         ref_code_pattern=r"\y66\.",
+        harvest_key="continuing-airworthiness",
     ),
     CatalogEntry(
         id="part-camo",
@@ -98,6 +103,7 @@ CATALOG: list[CatalogEntry] = [
         easa_url="https://www.easa.europa.eu/en/document-library/easy-access-rules/easy-access-rules-continuing-airworthiness",
         doc_title_pattern="%Continuing Airworthiness%",
         ref_code_pattern=r"\yCAMO\.",
+        harvest_key="continuing-airworthiness",
     ),
 
     # ── Implementing Rules — Air Operations ───────────────────────────────────
@@ -111,6 +117,7 @@ CATALOG: list[CatalogEntry] = [
         easa_url="https://www.easa.europa.eu/en/document-library/easy-access-rules/easy-access-rules-air-operations-eu-no-9652012",
         doc_title_pattern="%Air Operations%",
         ref_code_pattern=r"\yORO\.",
+        harvest_key="air-operations",
     ),
     CatalogEntry(
         id="part-cat",
@@ -122,6 +129,7 @@ CATALOG: list[CatalogEntry] = [
         easa_url="https://www.easa.europa.eu/en/document-library/easy-access-rules/easy-access-rules-air-operations-eu-no-9652012",
         doc_title_pattern="%Air Operations%",
         ref_code_pattern=r"\yCAT\.",
+        harvest_key="air-operations",
     ),
     CatalogEntry(
         id="part-spa",
@@ -133,6 +141,7 @@ CATALOG: list[CatalogEntry] = [
         easa_url="https://www.easa.europa.eu/en/document-library/easy-access-rules/easy-access-rules-air-operations-eu-no-9652012",
         doc_title_pattern="%Air Operations%",
         ref_code_pattern=r"\ySPA\.",
+        harvest_key="air-operations",
     ),
 
     # ── Implementing Rules — Aerodromes ──────────────────────────────────────
@@ -145,6 +154,7 @@ CATALOG: list[CatalogEntry] = [
         description="Requirements for aerodrome design, operations and certification.",
         easa_url="https://www.easa.europa.eu/en/document-library/easy-access-rules/easy-access-rules-aerodromes-regulation-eu-no-1392014",
         doc_title_pattern="%Aerodromes%",
+        harvest_key="part-adr",
     ),
 
     # ── Implementing Rules — Aircrew ──────────────────────────────────────────
@@ -156,6 +166,7 @@ CATALOG: list[CatalogEntry] = [
         domain="aircrew",
         description="Requirements for pilot licences and ratings.",
         easa_url="https://www.easa.europa.eu/en/document-library/easy-access-rules/easy-access-rules-flight-crew-licensing-eu-no-11782011",
+        harvest_key="aircrew",
     ),
     CatalogEntry(
         id="part-med",
@@ -165,6 +176,7 @@ CATALOG: list[CatalogEntry] = [
         domain="aircrew",
         description="Medical requirements for flight crew.",
         easa_url="https://www.easa.europa.eu/en/document-library/easy-access-rules/easy-access-rules-flight-crew-licensing-eu-no-11782011",
+        harvest_key="aircrew",
     ),
 
     # ── Certification Specifications — Fixed Wing ─────────────────────────────
@@ -187,6 +199,7 @@ CATALOG: list[CatalogEntry] = [
         domain="initial-airworthiness",
         description="Certification specifications for normal-category aeroplanes.",
         easa_url="https://www.easa.europa.eu/en/document-library/certification-specifications/cs-23-amendment-5",
+        harvest_key="cs-23",
     ),
     CatalogEntry(
         id="cs-27",
@@ -196,6 +209,7 @@ CATALOG: list[CatalogEntry] = [
         domain="initial-airworthiness",
         description="Certification specifications for small rotorcraft (MTOW ≤ 3 175 kg).",
         easa_url="https://www.easa.europa.eu/en/document-library/certification-specifications/cs-27-amendment-10",
+        harvest_key="cs-27",
     ),
     CatalogEntry(
         id="cs-29",
@@ -205,6 +219,7 @@ CATALOG: list[CatalogEntry] = [
         domain="initial-airworthiness",
         description="Certification specifications for large rotorcraft.",
         easa_url="https://www.easa.europa.eu/en/document-library/certification-specifications/cs-29-amendment-10",
+        harvest_key="cs-29",
     ),
     CatalogEntry(
         id="cs-e",
@@ -214,6 +229,7 @@ CATALOG: list[CatalogEntry] = [
         domain="initial-airworthiness",
         description="Certification specifications for aircraft engines.",
         easa_url="https://www.easa.europa.eu/en/document-library/certification-specifications/cs-e-amendment-6",
+        harvest_key="cs-e",
     ),
     CatalogEntry(
         id="cs-p",
@@ -223,6 +239,7 @@ CATALOG: list[CatalogEntry] = [
         domain="initial-airworthiness",
         description="Certification specifications for propellers.",
         easa_url="https://www.easa.europa.eu/en/document-library/certification-specifications/cs-p-amendment-5",
+        harvest_key="cs-p",
     ),
     CatalogEntry(
         id="cs-apu",
@@ -232,6 +249,7 @@ CATALOG: list[CatalogEntry] = [
         domain="initial-airworthiness",
         description="Certification specifications for APUs.",
         easa_url="https://www.easa.europa.eu/en/document-library/certification-specifications/cs-apu-initial-issue",
+        harvest_key="cs-apu",
     ),
     CatalogEntry(
         id="cs-lsa",
@@ -241,6 +259,7 @@ CATALOG: list[CatalogEntry] = [
         domain="initial-airworthiness",
         description="Certification specifications for light sport aeroplanes.",
         easa_url="https://www.easa.europa.eu/en/document-library/certification-specifications/cs-lsa-amendment-1",
+        harvest_key="cs-lsa",
     ),
 
     # ── Certification Specifications — Avionics / CNS ────────────────────────
@@ -263,6 +282,7 @@ CATALOG: list[CatalogEntry] = [
         domain="avionics",
         description="Certification specifications for all weather operations (PDF only — no XML available).",
         easa_url="https://www.easa.europa.eu/en/document-library/certification-specifications/cs-awo-amendment-3",
+        harvest_key="cs-awo",
     ),
     CatalogEntry(
         id="cs-etso",
@@ -272,6 +292,7 @@ CATALOG: list[CatalogEntry] = [
         domain="avionics",
         description="Technical standard orders for airborne equipment.",
         easa_url="https://www.easa.europa.eu/en/document-library/certification-specifications/cs-etso-amendment-20",
+        harvest_key="cs-etso",
     ),
     CatalogEntry(
         id="cs-fcd",
@@ -281,6 +302,7 @@ CATALOG: list[CatalogEntry] = [
         domain="avionics",
         description="Certification specifications for flight crew data.",
         easa_url="https://www.easa.europa.eu/en/document-library/certification-specifications/cs-fcd-initial-issue",
+        harvest_key="cs-fcd",
     ),
 ]
 
