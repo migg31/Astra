@@ -19,9 +19,10 @@ interface Props {
 }
 
 // Matches EASA article references:
-//   alphabetic-led : 21.A.20, M.A.302, ACNS.B.GEN.1005, ORO.GEN.105
-//   numeric-led    : 25.143, 25.1309
-const ANY_REF_RE = /\b(?:(?:[A-Z]+\.){1,3}[A-Z0-9]+(?:\.[A-Z0-9]+)*|\d{2,}\.[A-Z0-9]+(?:\.[A-Z0-9]+)*)\b/g;
+//   prefixed  : AMC 25.1309, GM1 21.A.91, CS 25.143
+//   alpha-led : 21.A.20, M.A.302, ACNS.B.GEN.1005
+//   num-led   : 25.143, 25.1309
+const ANY_REF_RE = /\b(?:(?:AMC\d*|GM\d*|CS|IR)\s+(?:\d{2,}\.[\w.]+|(?:[A-Z]+\.){1,3}[A-Z0-9]+(?:\.[A-Z0-9]+)*)|(?:[A-Z]+\.){1,3}[A-Z0-9]+(?:\.[A-Z0-9]+)*|\d{2,}\.[A-Z0-9]+(?:\.[A-Z0-9]+)*)\b/g;
 
 /**
  * Walk the real DOM text nodes inside `container` and wrap every article
@@ -36,10 +37,18 @@ function linkifyDom(
   knownRefs: Set<string>
 ) {
   // Build bare-code → full ref lookup (e.g. "25.1309" → "CS 25.1309")
+  // Priority: IR > CS > AMC > GM (prefer base article over commentary)
+  const TYPE_PRIORITY: Record<string, number> = { IR: 0, CS: 1, AMC: 2, GM: 3 };
   const bareToFull = new Map<string, string>();
+  const barePriority = new Map<string, number>();
   for (const full of knownRefs) {
     const bare = full.replace(/^(?:AMC\d*|GM\d*|CS|IR)\s+/, "").replace(/\([^)]*\).*$/, "").trim();
-    if (!bareToFull.has(bare)) bareToFull.set(bare, full);
+    const prefix = full.split(" ")[0].replace(/\d+$/, "");
+    const prio = TYPE_PRIORITY[prefix] ?? 9;
+    if (!bareToFull.has(bare) || prio < (barePriority.get(bare) ?? 9)) {
+      bareToFull.set(bare, full);
+      barePriority.set(bare, prio);
+    }
   }
 
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
