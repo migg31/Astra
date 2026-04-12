@@ -297,7 +297,7 @@ export default function App() {
 
       {mode === "consult" && (
         <div className="app-grid" style={{ gridTemplateColumns: `${leftWidth}px 1fr 280px` }}>
-          <div style={{ position: "relative", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+          <div style={{ position: "relative" }}>
             <TreePanel
               availableTypes={availableTypes}
               activeTypes={activeTypes}

@@ -2875,6 +2875,7 @@ body,
 
 /* ── History drawer at bottom of tree panel ── */
 .tree-history-drawer {
+  margin-top: auto;
   flex-shrink: 0;
   border-top: 1px solid #e5e7eb;
   background: #fff;
