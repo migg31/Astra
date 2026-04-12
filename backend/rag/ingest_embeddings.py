@@ -24,6 +24,9 @@ def _fetch_nodes(cur) -> list[dict]:
                content_text, content_hash, hierarchy_path,
                regulatory_source, applicability_date
         FROM regulatory_nodes
+        WHERE node_type != 'GROUP'
+          AND content_text IS NOT NULL
+          AND content_text != ''
         ORDER BY hierarchy_path, reference_code
         """
     )
@@ -31,7 +34,7 @@ def _fetch_nodes(cur) -> list[dict]:
     return [dict(zip(cols, row)) for row in cur.fetchall()]
 
 
-MAX_EMBED_CHARS = 6000  # nomic-embed-text context window ~8192 tokens ≈ 6000 chars
+MAX_EMBED_CHARS = 3000  # safe limit for nomic-embed-text (~8192 tokens, 4 chars/token avg)
 
 
 def _build_document(node: dict) -> str:
@@ -39,7 +42,8 @@ def _build_document(node: dict) -> str:
     parts = [node["reference_code"]]
     if node["title"]:
         parts.append(node["title"])
-    parts.append(node["content_text"])
+    body = node["content_text"] or ""
+    parts.append(body)
     doc = "\n\n".join(parts)
     return doc[:MAX_EMBED_CHARS]
 

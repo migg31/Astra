@@ -244,11 +244,13 @@ async def _run_harvester_task_multi(source_cfgs: list[dict]):
 
             # Step 3 — Re-index vectors (once, after all sources)
             _log("=== Re-indexing vectors (all sources) ===")
+            _log("Fetching nodes from PostgreSQL (excluding GROUP + empty)...")
             try:
                 await loop.run_in_executor(None, run_embedding_pipeline)
                 _log("Vector index rebuilt successfully.")
             except Exception as e:
                 _log(f"ERROR during vector re-indexing: {e}")
+                _log("Hint: context length exceeded — check MAX_EMBED_CHARS in ingest_embeddings.py")
                 _status.error = f"vector re-index failed — {e}"
 
             _log(f"=== Harvest complete: {len(_status.completed)}/{len(source_cfgs)} sources ===")
