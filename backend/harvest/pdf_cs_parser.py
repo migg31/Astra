@@ -220,6 +220,8 @@ def parse_cs_pdf(pdf_path: Path, *, regulatory_source: str | None = None) -> Par
                 current_type = None
                 current_body_parts = []
                 subpart_label = " ".join(text.replace("\xa0", " ").replace("\n", " ").split())
+                # Collapse letter-spaced uppercase words: 'S UBPART' → 'SUBPART', 'S ECTION' → 'SECTION'
+                subpart_label = re.sub(r'\b([A-Z]) ([A-Z]{2,})\b', r'\1\2', subpart_label)
                 current_hierarchy = doc_title + " / " + subpart_label
                 legacy_mode = False
                 continue
