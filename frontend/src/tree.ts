@@ -119,24 +119,28 @@ function sortNodes(ns: NodeSummary[]): void {
  * Ranges per EASA CS-25 table of contents.
  */
 function cs25Subpart(code: string): string {
-  // Appendix J (turbine engine) → Subpart E
-  if (/25J\d/i.test(code)) return "Subpart E — Powerplant";
-  // Appendix A / other lettered appendices
-  if (/25[A-IK-Z]\d/i.test(code)) return "Appendices";
-  // General AMC (AMC 25-N) and AMC No. / AMC to Appendix
-  if (/25-\d/.test(code) || /^AMC\s+(No|to\s+App)/i.test(code)) return "Appendices";
+  // Appendix J (APU turbine-engine): 25J... → "Appendices to CS-25"
+  if (/25J\d/i.test(code) || /AMC\s+25J/i.test(code)) return "Appendices to CS-25";
+  // Other lettered appendices (25A..., 25B...) → "Appendices to CS-25"
+  if (/25[A-IK-Z]\d/i.test(code)) return "Appendices to CS-25";
+  // AMC to Appendix... → "Appendices to CS-25"
+  if (/^AMC\s+to\s+App/i.test(code)) return "Appendices to CS-25";
+  // General AMCs: AMC 25-N, AMC No. → "General AMCs"
+  if (/25-\d/.test(code) || /^AMC\s+No/i.test(code)) return "General AMCs";
 
   const m = code.match(/25\.(\d+)/);
-  if (!m) return "Appendices";
+  if (!m) return "General AMCs";
   const n = parseInt(m[1], 10);
   if (n <= 45)   return "Subpart A — General";
   if (n <= 253)  return "Subpart B — Flight";
-  if (n <= 459)  return "Subpart C — Structure";
-  if (n <= 843)  return "Subpart D — Design and Construction";
-  if (n <= 1209) return "Subpart E — Powerplant";  // 1207 = last CS in Powerplant
-  if (n <= 1461) return "Subpart F — Equipment";   // 1460/1461 = last CS in Equipment
-  if (n <= 1592) return "Subpart G — Operating Limitations and Information";
-  return "Appendices";
+  if (n <= 519)  return "Subpart C — Structure";
+  if (n <= 899)  return "Subpart D — Design and Construction";
+  if (n <= 1207) return "Subpart E — Powerplant";
+  if (n <= 1461) return "Subpart F — Equipment";
+  if (n <= 1593) return "Subpart G — Operating Limitations and Information";
+  if (n <= 1871) return "Subpart H — Electrical Wiring Interconnection Systems";
+  if (n <= 1963) return "Subpart J — Auxiliary Power Unit Installations";
+  return "Appendices to CS-25";
 }
 
 /** Canonical label map: normalizedKey -> preferred display label */
