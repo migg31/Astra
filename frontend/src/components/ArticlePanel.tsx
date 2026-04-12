@@ -18,8 +18,8 @@ interface Props {
   versionCheck?: VersionCheckResult | null;
 }
 
-// Matches any Part 21 article reference: 21.A.20, 21.B.80, 21.A.101A, etc.
-const ANY_REF_RE = /21\.[A-Z]\.\d+[A-Z]?/g;
+// Matches any EASA article reference: 21.A.20, 25.143, M.A.302, ACNS.B.GEN.1005, etc.
+const ANY_REF_RE = /\b(?:[A-Z]+\.){1,3}[A-Z0-9]+(?:\.[A-Z0-9]+)*\b/g;
 
 /**
  * Walk the real DOM text nodes inside `container` and wrap every article
@@ -175,7 +175,7 @@ export function ArticlePanel({ node, loading, error, onNavigate, knownRefs, sibl
   useEffect(() => {
     const container = articleRef.current;
     if (!container || !node || !knownRefs) return;
-    const ownRefMatch = node.reference_code.match(/21\.[A-Z]\.\d+[A-Z]?/);
+    const ownRefMatch = node.reference_code.match(/\b(?:[A-Z]+\.){1,3}[A-Z0-9]+(?:\.[A-Z0-9]+)*\b/);
     const ownRef = ownRefMatch ? ownRefMatch[0] : "";
     linkifyDom(container, ownRef, knownRefs);
   }, [node?.node_id, knownRefs]);
