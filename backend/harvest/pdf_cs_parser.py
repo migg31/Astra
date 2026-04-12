@@ -243,7 +243,7 @@ def parse_cs_pdf(pdf_path: Path, *, regulatory_source: str | None = None) -> Par
         nodes=nodes,
         edges=[],
         source_document_hash="",
-        source_document_title=f"CS-25 {version_label}" if version_label else "CS Document",
+        source_document_title=f"{regulatory_source.split(' ')[0]} {version_label}".strip() if version_label else regulatory_source,
         source_version=version_label,
         source_pub_time=None,
     )
