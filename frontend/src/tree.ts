@@ -119,10 +119,12 @@ export function buildTree(nodes: NodeSummary[]): SubpartGroup[] {
     if (node.node_type === "GROUP") continue;
     const parts = node.hierarchy_path.split(" / ");
 
-    // Find the subpart segment (SUBPART X or Subpart X)
-    const subpart = parts.slice(0, -1).find((p) => /^\(?SUBPART/i.test(p)) ?? "Other";
+    // Find the subpart segment (SUBPART X or Subpart X) — search all segments except last
+    // For PDF nodes with 2 levels (doc / subpart), subpart is at index 1 (last structural segment)
+    const structuralParts = parts.length > 1 ? parts.slice(1) : parts;
+    const subpart = structuralParts.find((p) => /^\(?SUBPART/i.test(p)) ?? "Other";
     // Find the section segment (Section N or SECTION N) — may not exist
-    const section = parts.slice(0, -1).find((p) => /^SECTION\s+\d/i.test(p)) ?? "";
+    const section = structuralParts.find((p) => /^SECTION\s+\d/i.test(p)) ?? "";
 
     const art = articleCode(node);
 
