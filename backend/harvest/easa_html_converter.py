@@ -97,6 +97,13 @@ class HtmlConverter:
         parts = []
         current_block = None
         skipped_title = False
+        current_list_type: str | None = None  # "ul" or "ol"
+
+        def _close_list():
+            nonlocal current_list_type
+            if current_list_type:
+                parts.append(f"</{current_list_type}>\n")
+                current_list_type = None
 
         for el in elements:
             t = _tag(el)
@@ -104,11 +111,11 @@ class HtmlConverter:
             if t == "p":
                 style = self._get_style(el)
 
-            # EASA blocks: any style containing AMC, GM or IR/Rule
             block_type = self._get_block_type(style)
             is_major_heading = style in ("heading1", "heading2", "chaptertitle")
 
             if block_type or is_major_heading:
+                _close_list()
                 if current_block:
                     parts.append("</div>\n")
                     current_block = None
@@ -117,23 +124,35 @@ class HtmlConverter:
                     current_block = block_type
 
             if t == "p":
-                # Skip the first title paragraph if it's already in the header
                 if not skipped_title and title_to_skip:
                     text = "".join(node.text for node in el.iter(f"{{{W}}}t") if node.text).strip()
                     if text and (text in title_to_skip or title_to_skip in text):
                         skipped_title = True
                         continue
 
-                # Skip regulatory-source paragraphs — shown in the article header already
                 if self._get_style(el) == "regulatorysource":
                     continue
 
                 html = self._para(el)
                 if html:
+                    # Group consecutive <li> into <ul>/<ol>
+                    m = re.match(r'<li data-list="(ul|ol)"', html)
+                    if m:
+                        lt = m.group(1)
+                        if current_list_type != lt:
+                            _close_list()
+                            parts.append(f"<{lt}>\n")
+                            current_list_type = lt
+                        # Strip data-list attribute before appending
+                        html = re.sub(r' data-list="(?:ul|ol)"', "", html, count=1)
+                    else:
+                        _close_list()
                     parts.append(html)
             elif t == "tbl":
+                _close_list()
                 parts.append(self._table(el))
 
+        _close_list()
         if current_block:
             parts.append("</div>\n")
 
@@ -177,25 +196,35 @@ class HtmlConverter:
         numPr = None
         indent_style = ""
         p_bold = p_italic = p_underline = False
+        is_bullet = False
+        is_center = False
         if pPr is not None:
             pStyle = pPr.find(f"{{{W}}}pStyle")
             if pStyle is not None:
                 style = (_attr(pStyle, W, "val") or "").lower().replace(" ", "")
             numPr = pPr.find(f"{{{W}}}numPr")
 
+            # Detect bullet vs numbered list
+            if numPr is not None:
+                fmt_el = numPr.find(f"{{{W}}}numFmt")
+                fmt_val = _attr(fmt_el, W, "val") if fmt_el is not None else None
+                is_bullet = fmt_val in ("bullet", None) and ("listbullet" in style or "bullet" in style)
+
             # Extract indentation (w:ind)
             ind = pPr.find(f"{{{W}}}ind")
             if ind is not None:
-                # Use 'left' for overall block indentation
                 left = _attr(ind, W, "left")
                 if left and left.isdigit():
-                    # Word twips to rem (1440 twips = 1 inch = approx 6rem)
-                    # So divide by 240 for a good scale.
                     rem = int(left) / 240.0
                     if rem > 0:
                         indent_style = f'padding-left: {rem:.2f}rem;'
 
-            # Paragraph-level formatting (applies to all runs)
+            # Text alignment
+            jc = pPr.find(f"{{{W}}}jc")
+            if jc is not None and _attr(jc, W, "val") == "center":
+                is_center = True
+
+            # Paragraph-level formatting
             rPr = pPr.find(f"{{{W}}}rPr")
             if rPr is not None:
                 p_bold = rPr.find(f"{{{W}}}b") is not None
@@ -206,27 +235,32 @@ class HtmlConverter:
         if not inline.strip():
             return ""
 
-        # Apply paragraph-level formatting if detected
-        if p_bold: inline = f"<strong>{inline}</strong>"
-        if p_italic: inline = f"<em>{inline}</em>"
+        if p_bold:      inline = f"<strong>{inline}</strong>"
+        if p_italic:    inline = f"<em>{inline}</em>"
         if p_underline: inline = f"<u>{inline}</u>"
 
         tag = HEADING_STYLES.get(style, None)
         if tag and tag.startswith("h"):
-            style_attr = f' style="{indent_style}"' if indent_style else ""
+            style_parts = []
+            if indent_style: style_parts.append(indent_style)
+            if is_center:    style_parts.append("text-align:center;")
+            style_attr = f' style="{" ".join(style_parts)}"' if style_parts else ""
             return f'<{tag}{style_attr}>{inline}</{tag}>\n'
 
         css_classes = []
-        if style == "regulatorysource":
-            css_classes.append("reg-source")
-        if "dxshortdesc" in style:
-            css_classes.append("reg-decision")
-        
+        if style == "regulatorysource":  css_classes.append("reg-source")
+        if "dxshortdesc" in style:       css_classes.append("reg-decision")
+
+        style_parts = []
+        if indent_style: style_parts.append(indent_style)
+        if is_center:    style_parts.append("text-align:center;")
+
         css_class_attr = f' class="{" ".join(css_classes)}"' if css_classes else ""
-        final_style = f' style="{indent_style}"' if indent_style else ""
+        final_style = f' style="{" ".join(style_parts)}"' if style_parts else ""
 
         if style in LIST_STYLES or numPr is not None:
-            return f"<li{css_class_attr}{final_style}>{inline}</li>\n"
+            list_type = "ul" if is_bullet else "ol"
+            return f"<li data-list=\"{list_type}\"{css_class_attr}{final_style}>{inline}</li>\n"
 
         return f"<p{css_class_attr}{final_style}>{inline}</p>\n"
 
@@ -253,11 +287,12 @@ class HtmlConverter:
 
     def _run(self, r: etree._Element) -> str:
         rPr = r.find(f"{{{W}}}rPr")
-        bold = italic = underline = superscript = subscript = False
+        bold = italic = underline = strike = superscript = subscript = False
         if rPr is not None:
-            bold      = rPr.find(f"{{{W}}}b")    is not None
-            italic    = rPr.find(f"{{{W}}}i")    is not None
-            underline = rPr.find(f"{{{W}}}u")    is not None
+            bold      = rPr.find(f"{{{W}}}b")      is not None
+            italic    = rPr.find(f"{{{W}}}i")      is not None
+            underline = rPr.find(f"{{{W}}}u")      is not None
+            strike    = rPr.find(f"{{{W}}}strike") is not None
             va = rPr.find(f"{{{W}}}vertAlign")
             if va is not None:
                 val = _attr(va, W, "val") or ""
@@ -287,6 +322,7 @@ class HtmlConverter:
         if bold:        text = f"<strong>{text}</strong>"
         if italic:      text = f"<em>{text}</em>"
         if underline:   text = f"<u>{text}</u>"
+        if strike:      text = f"<s>{text}</s>"
         return text
 
     def _hyperlink(self, hl: etree._Element) -> str:
