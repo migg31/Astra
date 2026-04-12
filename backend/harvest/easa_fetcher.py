@@ -48,33 +48,47 @@ def fetch_easa_xml(
     target_dir = data_dir / "raw" / "easa" / fetched_at.strftime("%Y-%m-%d") / external_id
     target_dir.mkdir(parents=True, exist_ok=True)
 
-    zip_path = target_dir / "package.zip"
     headers = {
         "User-Agent": USER_AGENT,
         "Referer": "https://www.easa.europa.eu/en/document-library/easy-access-rules",
-        "Accept": "application/zip,application/octet-stream"
+        "Accept": "application/pdf,application/zip,application/octet-stream",
     }
     req = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(req, timeout=300) as resp, zip_path.open("wb") as out:  # noqa: S310
-        while chunk := resp.read(1 << 20):
-            out.write(chunk)
+
+    raw_path = target_dir / "package.bin"
+    with urllib.request.urlopen(req, timeout=300) as resp:  # noqa: S310
+        content_type = resp.headers.get("Content-Type", "")
+        with raw_path.open("wb") as out:
+            while chunk := resp.read(1 << 20):
+                out.write(chunk)
+
+    # ── PDF response (CS amendments, CS-ACNS) ────────────────────────────────
+    if "pdf" in content_type.lower() or raw_path.read_bytes()[:4] == b"%PDF":
+        pdf_path = target_dir / "document.pdf"
+        raw_path.rename(pdf_path)
+        return FetchedDocument(
+            path=pdf_path,
+            content_hash=_hash_file(pdf_path),
+            fetched_at=fetched_at,
+            url=url,
+            external_id=external_id,
+        )
+
+    # ── ZIP response (EasyAccess Rules: DOCX or XML inside) ──────────────────
+    zip_path = target_dir / "package.zip"
+    raw_path.rename(zip_path)
 
     with zipfile.ZipFile(zip_path) as zf:
-        # Heuristic: look for the largest .xml OR any .docx file
         all_files = zf.infolist()
         xml_files = [f for f in all_files if f.filename.lower().endswith(".xml")]
         docx_files = [f for f in all_files if f.filename.lower().endswith(".docx")]
 
         if docx_files:
-            # Save the .docx intact so the parser can access all parts:
-            # customXml/item*.xml (er:toc) AND word/document.xml (body).
-            # Extracting only the largest inner XML loses the TOC.
             main_docx = max(docx_files, key=lambda x: x.file_size)
             xml_path = target_dir / "document.docx"
             with zf.open(main_docx.filename) as src, xml_path.open("wb") as dst:
                 while chunk := src.read(1 << 20):
                     dst.write(chunk)
-        
         elif xml_files:
             main_xml_info = max(xml_files, key=lambda x: x.file_size)
             xml_path = target_dir / "document.xml"

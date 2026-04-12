@@ -20,6 +20,7 @@ from psycopg2.extras import execute_values
 from backend.config import settings
 from backend.harvest.easa_fetcher import fetch_easa_xml, fetch_part21_xml, PART21_XML_ZIP_URL
 from backend.harvest.easa_parser import parse_easa_xml
+from backend.harvest.pdf_cs_parser import parse_cs_pdf
 from backend.harvest.models import ParseResult
 
 
@@ -322,7 +323,10 @@ def upsert_edges(cur, node_map: dict[tuple[str, str], str], result: ParseResult)
 
 
 def ingest(xml_path: Path, *, source_name: str, source_url: str, external_id: str, content_hash: str, seen_keys: set[tuple[str, str]] | None = None) -> dict:
-    result = parse_easa_xml(xml_path)
+    if xml_path.suffix.lower() == ".pdf":
+        result = parse_cs_pdf(xml_path, regulatory_source=source_name)
+    else:
+        result = parse_easa_xml(xml_path)
 
     title = result.source_document_title or source_name
     version_label = result.source_version or "Unknown"
