@@ -66,11 +66,16 @@ def reset_postgres() -> None:
             print(f"  SKIP (not found): {fname}")
             continue
         sql = fpath.read_text(encoding="utf-8")
+        # Migrations with embedded COMMIT/BEGIN must run with autocommit
+        needs_autocommit = "COMMIT" in sql.upper() or "BEGIN" in sql.upper()
         try:
-            with psycopg2.connect(settings.database_url_sync) as conn:
-                with conn.cursor() as cur:
-                    cur.execute(sql)
+            conn = psycopg2.connect(settings.database_url_sync)
+            conn.autocommit = needs_autocommit
+            with conn.cursor() as cur:
+                cur.execute(sql)
+            if not needs_autocommit:
                 conn.commit()
+            conn.close()
             print(f"  Applied: {fname}")
         except Exception as e:
             print(f"  WARN {fname}: {e}")

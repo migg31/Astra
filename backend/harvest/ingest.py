@@ -427,11 +427,12 @@ def main(argv: list[str] | None = None) -> int:
 
     print("[parse+persist] running ...")
     report = ingest(
-        xml_path, 
+        xml_path,
         source_name=source_cfg["name"],
-        source_url=source_url, 
+        source_url=source_url,
         external_id=source_cfg["external_id"],
-        content_hash=content_hash
+        content_hash=content_hash,
+        is_latest=True,
     )
     print(f"[done] {report}")
     return 0

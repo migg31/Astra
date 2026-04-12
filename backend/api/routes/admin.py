@@ -227,6 +227,7 @@ async def _run_harvester_task_multi(source_cfgs: list[dict]):
                             external_id=f.external_id,
                             content_hash=f.content_hash,
                             seen_keys=seen_keys,
+                            is_latest=True,
                         ),
                     )
                     _log(f"[{name}] Nodes upserted  : {report.get('nodes', 0)}")
