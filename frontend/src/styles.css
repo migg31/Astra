@@ -1650,6 +1650,59 @@ body,
 }
 .admin-add-row-btn:hover { text-decoration: underline; }
 
+/* Source checklist (harvest multi-select) */
+.admin-source-checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.admin-source-check {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.45rem 0.65rem;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  cursor: pointer;
+  font-size: 0.82rem;
+  color: #374151;
+  transition: background 0.1s, border-color 0.1s;
+}
+.admin-source-check input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: #222F64;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.admin-source-check.is-selected {
+  background: #eff6ff;
+  border-color: #93c5fd;
+}
+.admin-source-check.is-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.admin-source-check-name { flex: 1; }
+.admin-source-check-tag {
+  font-size: 0.62rem;
+  font-weight: 700;
+  padding: 0.1rem 0.45rem;
+  border-radius: 10px;
+  background: #f1f5f9;
+  color: #64748b;
+  border: 1px solid #e2e8f0;
+}
+.admin-source-check-tag--running { background: #dbeafe; color: #1d4ed8; border-color: #93c5fd; }
+.admin-source-check-tag--done    { background: #dcfce7; color: #15803d; border-color: #86efac; }
+
+/* Tall log variant */
+.admin-log--tall {
+  max-height: 420px;
+  min-height: 180px;
+}
+
 /* Status badges (version check) */
 .admin-status-badge {
   display: inline-block;

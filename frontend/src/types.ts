@@ -123,6 +123,10 @@ export interface IngestionStatus {
   last_run_at: string | null;
   last_report: any | null;
   error: string | null;
+  log_lines: string[];
+  current_source: string | null;
+  queue: string[];
+  completed: string[];
 }
 
 export interface SystemConfig {

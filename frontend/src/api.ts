@@ -174,9 +174,12 @@ export function getSystemConfig(): Promise<SystemConfig> {
   return fetchJSON<SystemConfig>("/api/admin/config");
 }
 
-export async function startHarvester(sourceId: string = "part21"): Promise<{ message: string }> {
-  const res = await fetch(`${API_BASE}/api/admin/harvester/run?source=${sourceId}`, {
+export async function startHarvester(sources: string | string[] = "part21"): Promise<{ message: string }> {
+  const sourceList = Array.isArray(sources) ? sources : [sources];
+  const res = await fetch(`${API_BASE}/api/admin/harvester/run`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sources: sourceList }),
   });
   if (!res.ok) {
     const detail = await res.json().catch(() => ({}));

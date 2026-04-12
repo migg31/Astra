@@ -31,9 +31,21 @@ class IngestionStatus(BaseModel):
     last_run_at: Optional[datetime] = None
     last_report: Optional[Dict] = None
     error: Optional[str] = None
+    log_lines: List[str] = []
+    current_source: Optional[str] = None
+    queue: List[str] = []
+    completed: List[str] = []
 
 _status = IngestionStatus()
 _lock = asyncio.Lock()
+
+
+def _log(line: str) -> None:
+    """Append a timestamped log line to the global status, keep last 200 lines."""
+    ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
+    _status.log_lines.append(f"[{ts}] {line}")
+    if len(_status.log_lines) > 200:
+        _status.log_lines = _status.log_lines[-200:]
 
 class SystemStats(BaseModel):
     nodes_count: int
@@ -168,40 +180,85 @@ async def get_harvester_status():
     """Get the current state of the ingestion process."""
     return _status
 
-async def _run_harvester_task_cfg(source_cfg: dict):
-    """Background task: fetch → parse → persist → embed for a given source config dict."""
+async def _run_harvester_task_multi(source_cfgs: list[dict]):
+    """Background task: run ingestion sequentially for each source in the list."""
     global _status
     async with _lock:
         _status.is_running = True
         _status.error = None
+        _status.log_lines = []
+        _status.completed = []
+        _status.queue = [c["name"] for c in source_cfgs]
+        loop = asyncio.get_running_loop()
+
         try:
-            data_dir = Path("data")
+            for src_cfg in source_cfgs:
+                name = src_cfg["name"]
+                _status.current_source = name
+                _status.queue = [c["name"] for c in source_cfgs if c["name"] not in _status.completed and c["name"] != name]
+                _log(f"=== Starting: {name} ===")
 
-            # 1. Fetch
-            fetched = fetch_easa_xml(data_dir, source_cfg["url"], source_cfg["external_id"])
+                data_dir = Path("data")
 
-            # 2. Ingest into Postgres
-            loop = asyncio.get_running_loop()
-            report = await loop.run_in_executor(
-                None,
-                lambda: ingest(
-                    fetched.path,
-                    source_name=source_cfg["name"],
-                    source_url=fetched.url,
-                    external_id=fetched.external_id,
-                    content_hash=fetched.content_hash,
-                ),
-            )
+                # Step 1 — Fetch
+                _log(f"[{name}] Fetching XML from EASA...")
+                try:
+                    fetched = await loop.run_in_executor(
+                        None,
+                        lambda cfg=src_cfg: fetch_easa_xml(data_dir, cfg["url"], cfg["external_id"]),
+                    )
+                    _log(f"[{name}] Downloaded: {fetched.path.name} ({fetched.path.stat().st_size // 1024} KB)")
+                    _log(f"[{name}] Content hash: {fetched.content_hash[:12]}...")
+                except Exception as e:
+                    _log(f"[{name}] ERROR during fetch: {e}")
+                    _status.error = f"{name}: fetch failed — {e}"
+                    continue
 
-            # 3. Re-index vectors
-            await loop.run_in_executor(None, run_embedding_pipeline)
+                # Step 2 — Ingest into Postgres
+                _log(f"[{name}] Parsing XML and upserting PostgreSQL...")
+                try:
+                    report = await loop.run_in_executor(
+                        None,
+                        lambda f=fetched, cfg=src_cfg: ingest(
+                            f.path,
+                            source_name=cfg["name"],
+                            source_url=f.url,
+                            external_id=f.external_id,
+                            content_hash=f.content_hash,
+                        ),
+                    )
+                    _log(f"[{name}] Nodes upserted  : {report.get('nodes', 0)}")
+                    _log(f"[{name}] Edges inserted  : {report.get('edges_inserted', 0)}")
+                    pub = report.get('pub_time')
+                    if pub:
+                        _log(f"[{name}] Publication date: {pub}")
+                    _status.last_report = report
+                    _status.last_run_at = datetime.now(timezone.utc)
+                except Exception as e:
+                    _log(f"[{name}] ERROR during ingest: {e}")
+                    _status.error = f"{name}: ingest failed — {e}"
+                    continue
 
-            _status.last_report = report
-            _status.last_run_at = datetime.now(timezone.utc)
+                _status.completed.append(name)
+                _log(f"[{name}] Done.")
+
+            # Step 3 — Re-index vectors (once, after all sources)
+            _log("=== Re-indexing vectors (all sources) ===")
+            try:
+                await loop.run_in_executor(None, run_embedding_pipeline)
+                _log("Vector index rebuilt successfully.")
+            except Exception as e:
+                _log(f"ERROR during vector re-indexing: {e}")
+                _status.error = f"vector re-index failed — {e}"
+
+            _log(f"=== Harvest complete: {len(_status.completed)}/{len(source_cfgs)} sources ===")
+
         except Exception as e:
             _status.error = str(e)
+            _log(f"FATAL ERROR: {e}")
         finally:
             _status.is_running = False
+            _status.current_source = None
 
 # ── Regulatory Sources CRUD ──────────────────────────────────────────────────
 
@@ -295,35 +352,37 @@ async def get_harvester_sources(db: AsyncSession = Depends(get_session)):
     return [dict(r._mapping) for r in rows]
 
 
+class HarvesterRunRequest(BaseModel):
+    sources: List[str] = ["part21"]
+
+
 @router.post("/harvester/run")
 async def start_harvester(
     background_tasks: BackgroundTasks,
-    source: str = "part21",
+    body: HarvesterRunRequest = HarvesterRunRequest(),
     db: AsyncSession = Depends(get_session),
 ):
-    """Trigger ingestion for a source identified by external_id."""
+    """Trigger ingestion for one or more sources by external_id."""
     if _status.is_running:
         raise HTTPException(status_code=400, detail="Harvester is already running")
 
-    row = await db.execute(
-        text("""
-            SELECT name, base_url, external_id
-            FROM harvest_sources
-            WHERE external_id = :eid
-        """),
-        {"eid": source},
-    )
-    src = row.fetchone()
-    if src is None:
-        # Fallback to hardcoded dict for backward compatibility
-        if source not in REGULATORY_SOURCES:
-            raise HTTPException(status_code=404, detail=f"Source '{source}' not found")
-        src_cfg = REGULATORY_SOURCES[source]
-    else:
-        src_cfg = {"name": src.name, "url": src.base_url, "external_id": src.external_id}
+    source_cfgs: list[dict] = []
+    for source in body.sources:
+        row = await db.execute(
+            text("SELECT name, base_url, external_id FROM harvest_sources WHERE external_id = :eid"),
+            {"eid": source},
+        )
+        src = row.fetchone()
+        if src is None:
+            if source not in REGULATORY_SOURCES:
+                raise HTTPException(status_code=404, detail=f"Source '{source}' not found")
+            source_cfgs.append(REGULATORY_SOURCES[source])
+        else:
+            source_cfgs.append({"name": src.name, "url": src.base_url, "external_id": src.external_id})
 
-    background_tasks.add_task(_run_harvester_task_cfg, src_cfg)
-    return {"message": f"Harvester started for {src_cfg['name']}"}
+    background_tasks.add_task(_run_harvester_task_multi, source_cfgs)
+    names = ", ".join(c["name"] for c in source_cfgs)
+    return {"message": f"Harvester started for: {names}"}
 
 
 @router.get("/catalog")

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   createSource, deleteSource, getHarvesterStatus, getHealth, getStats,
   getSystemConfig, getVersionCheck, listHarvesterSources, listSources, startHarvester, updateSource,
@@ -18,7 +18,8 @@ export function AdminConsole({ onClose }: AdminConsoleProps) {
   const [health, setHealth] = useState<HealthStatus | null>(null);
   const [harvester, setHarvester] = useState<IngestionStatus | null>(null);
   const [sources, setSources] = useState<{ id: string; name: string; external_id: string; enabled: boolean }[]>([]);
-  const [selectedSource, setSelectedSource] = useState("part21");
+  const [selectedSources, setSelectedSources] = useState<Set<string>>(new Set(["part21"]));
+  const logRef = useRef<HTMLPreElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [regulatorySources, setRegulatorySources] = useState<RegulatorySource[]>([]);
   const [editingSource, setEditingSource] = useState<RegulatorySource | null>(null);
@@ -54,9 +55,24 @@ export function AdminConsole({ onClose }: AdminConsoleProps) {
   };
 
   const handleRunHarvester = async () => {
-    try { await startHarvester(selectedSource); refreshData(); }
+    if (selectedSources.size === 0) { setError("Select at least one source."); return; }
+    try { await startHarvester(Array.from(selectedSources)); refreshData(); }
     catch (err: any) { setError("Harvester failed: " + err.message); }
   };
+
+  const toggleSource = (id: string) => {
+    setSelectedSources(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    if (logRef.current) {
+      logRef.current.scrollTop = logRef.current.scrollHeight;
+    }
+  }, [harvester?.log_lines]);
 
   const handleToggleEnabled = async (src: RegulatorySource) => {
     try { await updateSource(src.source_id, { enabled: !src.enabled }); await refreshData(); }
@@ -159,33 +175,108 @@ export function AdminConsole({ onClose }: AdminConsoleProps) {
         {activeTab === "harvest" && (
           <div className="admin-content">
             <h1 className="admin-page-title">Knowledge Harvester</h1>
-            <p className="admin-page-desc">Fetch and ingest EASA XML into PostgreSQL and re-index vectors. Version snapshots are recorded automatically for every changed node.</p>
-            <div className="admin-card" style={{ maxWidth: 560 }}>
-              <h2 className="admin-card-title">Run Ingestion</h2>
-              <label className="admin-label">Regulatory Source</label>
-              <select className="admin-select" value={selectedSource} onChange={(e) => setSelectedSource(e.target.value)} disabled={harvester?.is_running}>
-                {sources.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-              <div className="admin-status-row">
-                <span className="admin-label" style={{ margin: 0 }}>Status</span>
-                {harvester?.is_running
-                  ? <span className="admin-badge admin-badge--running">RUNNING</span>
-                  : <span className="admin-badge admin-badge--idle">IDLE</span>}
+            <p className="admin-page-desc">
+              Select one or more sources, then run ingestion. Each source is processed sequentially.
+              Version snapshots are recorded automatically for every changed node.
+            </p>
+
+            <div style={{ display: "flex", gap: "1.25rem", alignItems: "flex-start", flexWrap: "wrap" }}>
+              {/* Source selector */}
+              <div className="admin-card" style={{ minWidth: 280, flex: "0 0 auto" }}>
+                <h2 className="admin-card-title">Select Sources</h2>
+                <div className="admin-source-checklist">
+                  {sources.length === 0 && (
+                    <p style={{ color: "#9ca3af", fontSize: "0.8rem" }}>No sources configured.</p>
+                  )}
+                  {sources.map(s => (
+                    <label key={s.id} className={"admin-source-check" + (!s.enabled ? " is-disabled" : "") + (selectedSources.has(s.external_id) ? " is-selected" : "")}>
+                      <input
+                        type="checkbox"
+                        checked={selectedSources.has(s.external_id)}
+                        onChange={() => toggleSource(s.external_id)}
+                        disabled={harvester?.is_running || !s.enabled}
+                      />
+                      <span className="admin-source-check-name">{s.name}</span>
+                      {!s.enabled && <span className="admin-source-check-tag">disabled</span>}
+                      {harvester?.is_running && harvester.current_source === s.name && (
+                        <span className="admin-source-check-tag admin-source-check-tag--running">running</span>
+                      )}
+                      {harvester?.completed?.includes(s.name) && (
+                        <span className="admin-source-check-tag admin-source-check-tag--done">done</span>
+                      )}
+                    </label>
+                  ))}
+                </div>
+
+                <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem" }}>
+                  <button className="admin-action-btn" onClick={() => setSelectedSources(new Set(sources.filter(s => s.enabled).map(s => s.external_id)))} disabled={harvester?.is_running}>
+                    All
+                  </button>
+                  <button className="admin-action-btn" onClick={() => setSelectedSources(new Set())} disabled={harvester?.is_running}>
+                    None
+                  </button>
+                </div>
+
+                <div className="admin-status-row" style={{ marginTop: "1rem" }}>
+                  <span className="admin-label" style={{ margin: 0 }}>Status</span>
+                  {harvester?.is_running
+                    ? <span className="admin-badge admin-badge--running">RUNNING</span>
+                    : <span className="admin-badge admin-badge--idle">IDLE</span>}
+                </div>
+
+                <button
+                  className={"admin-primary-btn" + (harvester?.is_running ? " is-running" : "")}
+                  onClick={handleRunHarvester}
+                  disabled={harvester?.is_running || selectedSources.size === 0}
+                  style={{ marginTop: "0.5rem" }}
+                >
+                  {harvester?.is_running
+                    ? `Running ${harvester.current_source ?? "..."}` 
+                    : `Run ${selectedSources.size > 0 ? "(" + selectedSources.size + ")" : ""} Harvester`}
+                </button>
+
+                {/* Progress bar */}
+                {harvester?.is_running && (harvester.completed?.length + 1) > 0 && (
+                  <div style={{ marginTop: "0.75rem" }}>
+                    <div style={{ fontSize: "0.7rem", color: "#64748b", marginBottom: "0.3rem" }}>
+                      {harvester.completed?.length ?? 0} / {(harvester.completed?.length ?? 0) + (harvester.queue?.length ?? 0) + 1} sources
+                    </div>
+                    <div style={{ background: "#e2e8f0", borderRadius: 4, height: 6 }}>
+                      <div style={{
+                        background: "#007FC2",
+                        borderRadius: 4,
+                        height: 6,
+                        width: `${Math.round(((harvester.completed?.length ?? 0) / Math.max(1, (harvester.completed?.length ?? 0) + (harvester.queue?.length ?? 0) + 1)) * 100)}%`,
+                        transition: "width 0.4s",
+                      }} />
+                    </div>
+                  </div>
+                )}
               </div>
-              <button className={"admin-primary-btn" + (harvester?.is_running ? " is-running" : "")} onClick={handleRunHarvester} disabled={harvester?.is_running}>
-                {harvester?.is_running ? "Ingestion in progress..." : "Run Harvester"}
-              </button>
-              {(harvester?.error || harvester?.last_report || harvester?.is_running) && (
-                <pre className="admin-log">
-                  {harvester?.error
-                    ? "ERROR: " + harvester.error
-                    : harvester?.is_running
-                      ? "Pipeline running...\n  Fetching XML\n  Parsing\n  Upserting PostgreSQL\n  Re-indexing vectors"
-                      : harvester?.last_report
-                        ? "Completed " + new Date(harvester.last_run_at!).toLocaleString("fr-FR") + "\n  Nodes : " + harvester.last_report.nodes + "\n  Edges : " + harvester.last_report.edges_inserted
-                        : ""}
+
+              {/* Log panel */}
+              <div className="admin-card" style={{ flex: 1, minWidth: 320 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem" }}>
+                  <h2 className="admin-card-title" style={{ margin: 0 }}>Live Log</h2>
+                  {harvester?.last_run_at && !harvester.is_running && (
+                    <span style={{ fontSize: "0.7rem", color: "#64748b" }}>
+                      Last run: {new Date(harvester.last_run_at).toLocaleString("fr-FR")}
+                    </span>
+                  )}
+                </div>
+                <pre className="admin-log admin-log--tall" ref={logRef}>
+                  {harvester?.log_lines && harvester.log_lines.length > 0
+                    ? harvester.log_lines.join("\n")
+                    : harvester?.last_report
+                      ? "No log — run a harvest to see verbose output."
+                      : "Waiting for harvest run..."}
                 </pre>
-              )}
+                {harvester?.error && (
+                  <div style={{ marginTop: "0.5rem", padding: "0.5rem 0.75rem", background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 6, color: "#b91c1c", fontSize: "0.78rem" }}>
+                    {harvester.error}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}
