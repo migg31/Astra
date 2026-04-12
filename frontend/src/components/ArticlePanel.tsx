@@ -18,8 +18,10 @@ interface Props {
   versionCheck?: VersionCheckResult | null;
 }
 
-// Matches any EASA article reference: 21.A.20, 25.143, M.A.302, ACNS.B.GEN.1005, etc.
-const ANY_REF_RE = /\b(?:[A-Z]+\.){1,3}[A-Z0-9]+(?:\.[A-Z0-9]+)*\b/g;
+// Matches EASA article references:
+//   alphabetic-led : 21.A.20, M.A.302, ACNS.B.GEN.1005, ORO.GEN.105
+//   numeric-led    : 25.143, 25.1309
+const ANY_REF_RE = /\b(?:(?:[A-Z]+\.){1,3}[A-Z0-9]+(?:\.[A-Z0-9]+)*|\d{2,}\.[A-Z0-9]+(?:\.[A-Z0-9]+)*)\b/g;
 
 /**
  * Walk the real DOM text nodes inside `container` and wrap every article
@@ -33,6 +35,13 @@ function linkifyDom(
   ownRef: string,
   knownRefs: Set<string>
 ) {
+  // Build bare-code → full ref lookup (e.g. "25.1309" → "CS 25.1309")
+  const bareToFull = new Map<string, string>();
+  for (const full of knownRefs) {
+    const bare = full.replace(/^(?:AMC\d*|GM\d*|CS|IR)\s+/, "").replace(/\([^)]*\).*$/, "").trim();
+    if (!bareToFull.has(bare)) bareToFull.set(bare, full);
+  }
+
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
   const targets: Text[] = [];
   let tw: Node | null;
@@ -58,13 +67,15 @@ function linkifyDom(
       if (match.index > lastIndex) {
         fragment.appendChild(document.createTextNode(text.slice(lastIndex, match.index)));
       }
-      if (ref === ownRef) {
+      // Check exact match or bare-code match
+      const fullRef = knownRefs.has(ref) ? ref : (bareToFull.get(ref) ?? null);
+      if (ref === ownRef || ref === ownRef.replace(/^(?:AMC\d*|GM\d*|CS|IR)\s+/, "")) {
         fragment.appendChild(document.createTextNode(ref));
       } else {
         const span = document.createElement("span");
-        if (knownRefs.has(ref)) {
+        if (fullRef) {
           span.className = "crossref";
-          span.dataset.ref = ref;
+          span.dataset.ref = fullRef;
         } else {
           span.className = "crossref-external";
         }
