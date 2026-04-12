@@ -26,32 +26,49 @@ R   = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 HEADING_STYLES = {
     "heading1": "h2", "heading2": "h3", "heading3": "h4",
     "heading4": "h5", "heading5": "h6",
-    # EASA-specific style names found in XML
+    # EASA IR styles
     "heading2ir": "h2", "heading3ir": "h3", "heading4ir": "h4",
+    # EASA AMC styles
     "heading4amc": "h3", "heading5amc": "h4", "heading6amc": "h5", "heading7amc": "h6",
+    # EASA GM styles
     "heading2gm": "h3", "heading3gm": "h4", "heading4gm": "h5", "heading5gm": "h6", "heading6gm": "h6",
+    # EASA CS styles
+    "heading3cs": "h4", "heading4cs": "h5", "heading5cs": "h6",
+    # Org manual / other heading variants
+    "heading3orgmanual": "h4", "heading4orgmanual": "h5",
+    "heading5orgmanual": "h5", "heading6orgmanual": "h6",
+    # Titles
     "title": "h1", "easaheadertitle": "h1",
     # legacy/fallback
     "ruletitle": "h2", "amctitle": "h3", "gmtitle": "h3",
 }
-LIST_STYLES = {"listparagraph", "list paragraph", "listbullet", "list bullet",
-               "listnumber", "list number", "listcontinue"}
+
+# Styles that map to list items
+LIST_STYLES = {
+    "listparagraph", "list paragraph", "listbullet", "list bullet",
+    "listnumber", "list number", "listcontinue",
+    # EASA numeric indent levels (treated as ordered list items)
+    "listlevel0", "listlevel1", "listlevel2", "listlevel3", "listlevel4", "listlevel5",
+    # EASA bullet styles
+    "bullet0", "bullet1", "bullet2", "bullet3", "bullet4",
+}
+
+# Styles that are rendered as smaller/secondary text
+SMALL_STYLES = {"fineprint", "footnotetext", "footer"}
+
+# Styles to suppress entirely (TOC, internal Word metadata)
+SUPPRESS_STYLES = {
+    "toc1", "toc2", "toc3", "toc4", "toc5", "toc6", "toc7", "toc8", "toc9",
+    "tableofcontents", "tocheading",
+}
 
 EASA_BLOCK_TYPES = {
-    "heading2ir": "easa-rule",
-    "heading3ir": "easa-rule",
-    "heading4ir": "easa-rule",
-    "heading4amc": "easa-amc",
-    "heading5amc": "easa-amc",
-    "heading6amc": "easa-amc",
-    "heading2gm": "easa-gm",
-    "heading3gm": "easa-gm",
-    "heading4gm": "easa-gm",
-    "heading5gm": "easa-gm",
-    "heading6gm": "easa-gm",
-    "amctitle": "easa-amc",
-    "gmtitle": "easa-gm",
-    "ruletitle": "easa-rule",
+    "heading2ir": "easa-rule",   "heading3ir": "easa-rule",   "heading4ir": "easa-rule",
+    "heading4amc": "easa-amc",  "heading5amc": "easa-amc",  "heading6amc": "easa-amc",
+    "heading2gm": "easa-gm",    "heading3gm": "easa-gm",    "heading4gm": "easa-gm",
+    "heading5gm": "easa-gm",    "heading6gm": "easa-gm",
+    "heading3cs": "easa-rule",  "heading4cs": "easa-rule",  "heading5cs": "easa-rule",
+    "amctitle": "easa-amc",     "gmtitle": "easa-gm",       "ruletitle": "easa-rule",
 }
 
 
@@ -247,9 +264,14 @@ class HtmlConverter:
             style_attr = f' style="{" ".join(style_parts)}"' if style_parts else ""
             return f'<{tag}{style_attr}>{inline}</{tag}>\n'
 
+        # Suppress TOC and other unwanted styles entirely
+        if style in SUPPRESS_STYLES:
+            return ""
+
         css_classes = []
         if style == "regulatorysource":  css_classes.append("reg-source")
         if "dxshortdesc" in style:       css_classes.append("reg-decision")
+        if style in SMALL_STYLES:        css_classes.append("easa-fineprint")
 
         style_parts = []
         if indent_style: style_parts.append(indent_style)
@@ -258,8 +280,10 @@ class HtmlConverter:
         css_class_attr = f' class="{" ".join(css_classes)}"' if css_classes else ""
         final_style = f' style="{" ".join(style_parts)}"' if style_parts else ""
 
+        # Bullet styles → ul, everything else with numPr or list style → ol
+        is_bullet_style = any(s in style for s in ("bullet",))
         if style in LIST_STYLES or numPr is not None:
-            list_type = "ul" if is_bullet else "ol"
+            list_type = "ul" if (is_bullet or is_bullet_style) else "ol"
             return f"<li data-list=\"{list_type}\"{css_class_attr}{final_style}>{inline}</li>\n"
 
         return f"<p{css_class_attr}{final_style}>{inline}</p>\n"
@@ -285,14 +309,33 @@ class HtmlConverter:
                 pass
         return "".join(parts)
 
+    # Named character styles → formatting inference
+    _RSTYLE_BOLD   = {"strong", "bold"}
+    _RSTYLE_ITALIC = {"emphasis", "italic", "book title", "booktitle",
+                      "intensereference", "intense reference"}
+
     def _run(self, r: etree._Element) -> str:
         rPr = r.find(f"{{{W}}}rPr")
-        bold = italic = underline = strike = superscript = subscript = False
+        bold = italic = underline = strike = caps = superscript = subscript = False
+        color: str | None = None
         if rPr is not None:
             bold      = rPr.find(f"{{{W}}}b")      is not None
             italic    = rPr.find(f"{{{W}}}i")      is not None
             underline = rPr.find(f"{{{W}}}u")      is not None
             strike    = rPr.find(f"{{{W}}}strike") is not None
+            caps      = rPr.find(f"{{{W}}}caps")   is not None
+            # Named character style (rStyle) — infer formatting
+            rStyle_el = rPr.find(f"{{{W}}}rStyle")
+            if rStyle_el is not None:
+                rs = (_attr(rStyle_el, W, "val") or "").lower().replace(" ", "")
+                if rs in self._RSTYLE_BOLD:   bold   = True
+                if rs in self._RSTYLE_ITALIC: italic = True
+            # Color
+            color_el = rPr.find(f"{{{W}}}color")
+            if color_el is not None:
+                c = _attr(color_el, W, "val") or ""
+                if c and c.lower() not in ("auto", "000000", "ffffff"):
+                    color = f"#{c}"
             va = rPr.find(f"{{{W}}}vertAlign")
             if va is not None:
                 val = _attr(va, W, "val") or ""
@@ -319,10 +362,12 @@ class HtmlConverter:
 
         if superscript: text = f"<sup>{text}</sup>"
         if subscript:   text = f"<sub>{text}</sub>"
+        if caps:        text = text.upper()
         if bold:        text = f"<strong>{text}</strong>"
         if italic:      text = f"<em>{text}</em>"
         if underline:   text = f"<u>{text}</u>"
         if strike:      text = f"<s>{text}</s>"
+        if color:       text = f'<span style="color:{color}">{text}</span>'
         return text
 
     def _hyperlink(self, hl: etree._Element) -> str:
