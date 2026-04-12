@@ -40,8 +40,14 @@ MAX_EMBED_CHARS = 2000  # safe limit for nomic-embed-text (~8192 tokens, 4 chars
 
 
 def _build_document(node: dict) -> str:
-    """Text fed to the embedding model — reference + title + body (truncated)."""
-    parts = [node["reference_code"]]
+    """Text fed to the embedding model — source name + reference + title + body (truncated).
+    Including source_root ensures the document identity is encoded in the vector,
+    improving recall for questions that mention a document name (e.g. 'in CS-25').
+    """
+    parts = []
+    if node.get("source_root"):
+        parts.append(node["source_root"])  # e.g. "easa-cs25"
+    parts.append(node["reference_code"])
     if node["title"]:
         parts.append(node["title"])
     body = node["content_text"] or ""
