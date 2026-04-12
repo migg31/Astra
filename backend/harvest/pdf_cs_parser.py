@@ -133,7 +133,7 @@ def _extract_blocks(page: pymupdf.Page) -> list[_Block]:
                 sizes.append(span["size"])
                 bolds.append("Bold" in span["font"])
             if line_parts:
-                lines_text.append("".join(line_parts))
+                lines_text.append(" ".join(line_parts))
         if not lines_text:
             continue
         text = "\n".join(lines_text).strip()
