@@ -8,6 +8,40 @@ import type { HealthStatus, IngestionStatus, RegulatorySource, SystemStats } fro
 
 type AdminTab = "overview" | "harvest" | "sources" | "versions";
 
+function EmbedSparkline({ log, total }: { log: string[]; total: number }) {
+  const ticks = log
+    .filter(l => l.includes("[embed:progress]"))
+    .map(l => {
+      const m = l.match(/\[embed:progress\]\s+(\d+)\/\d+/);
+      return m ? parseInt(m[1], 10) : null;
+    })
+    .filter((v): v is number => v !== null);
+
+  if (ticks.length === 0 || total === 0) return null;
+
+  const W = 200, H = 24, n = ticks.length;
+  const bw = Math.max(2, Math.floor(W / Math.max(n, 1)) - 1);
+
+  return (
+    <svg width={W} height={H} style={{ display: "block" }}>
+      {ticks.map((v, i) => {
+        const h = Math.max(2, Math.round((v / total) * H));
+        return (
+          <rect
+            key={i}
+            x={i * (bw + 1)}
+            y={H - h}
+            width={bw}
+            height={h}
+            fill={v >= total ? "#16CC7F" : "#2563eb"}
+            opacity={0.7 + 0.3 * (i / Math.max(n - 1, 1))}
+          />
+        );
+      })}
+    </svg>
+  );
+}
+
 interface AdminConsoleProps {
   onClose: () => void;
 }
@@ -290,6 +324,27 @@ export function AdminConsole({ onClose }: AdminConsoleProps) {
                       ? "No log — run a harvest to see verbose output."
                       : "Waiting for harvest run..."}
                 </pre>
+                {/* Embedding sparkline */}
+                {(harvester?.embed_total ?? 0) > 0 && (
+                  <div style={{ marginTop: "0.75rem" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: "0.68rem", color: "#64748b", marginBottom: "0.3rem" }}>
+                      <span>Embeddings</span>
+                      <span>{harvester!.embed_done} / {harvester!.embed_total}</span>
+                    </div>
+                    {/* Sparkline SVG — 60 × 18 px, one bar per batch tick */}
+                    <EmbedSparkline log={harvester!.log_lines} total={harvester!.embed_total} />
+                    <div style={{ background: "#e2e8f0", borderRadius: 4, height: 4, marginTop: "0.3rem" }}>
+                      <div style={{
+                        background: "#16CC7F",
+                        borderRadius: 4,
+                        height: 4,
+                        width: `${harvester!.embed_total > 0 ? Math.round(harvester!.embed_done / harvester!.embed_total * 100) : 0}%`,
+                        transition: "width 0.4s",
+                      }} />
+                    </div>
+                  </div>
+                )}
+
                 {harvester?.error && (
                   <div style={{ marginTop: "0.5rem", padding: "0.5rem 0.75rem", background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 6, color: "#b91c1c", fontSize: "0.78rem" }}>
                     {harvester.error}

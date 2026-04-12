@@ -48,19 +48,21 @@ def _build_document(node: dict) -> str:
     return doc[:MAX_EMBED_CHARS]
 
 
-def main() -> int:
-    print("[embed] connecting to database …")
+def main(on_progress=None) -> int:
+    _emit = on_progress or print
+    _emit("[embed] connecting to database …")
     with psycopg2.connect(settings.database_url_sync) as conn:
         with conn.cursor() as cur:
             nodes = _fetch_nodes(cur)
 
-    print(f"[embed] {len(nodes)} nodes to embed")
+    total = len(nodes)
+    _emit(f"[embed] {total} nodes to embed")
 
     # Batch in groups of 32 to avoid oversized requests.
     BATCH = 32
     embedded = 0
     skipped = 0
-    for i in range(0, len(nodes), BATCH):
+    for i in range(0, total, BATCH):
         batch = nodes[i : i + BATCH]
         docs = [_build_document(n) for n in batch]
         try:
@@ -79,7 +81,6 @@ def main() -> int:
                     },
                 )
         except Exception:
-            # Batch failed — retry each node individually
             for node, doc in zip(batch, docs):
                 try:
                     emb = embed_batch([doc])[0]
@@ -96,15 +97,16 @@ def main() -> int:
                         },
                     )
                 except Exception:
-                    print(f"[embed] SKIP {node['reference_code']!r} — exceeds context length")
+                    _emit(f"[embed] SKIP {node['reference_code']!r} — exceeds context length")
                     skipped += 1
         embedded += len(batch)
-        print(f"[embed] {embedded}/{len(nodes)} …")
+        pct = round(embedded / total * 100) if total else 100
+        _emit(f"[embed:progress] {embedded}/{total} {pct}")
 
     if skipped:
-        print(f"[embed] warning — {skipped} nodes skipped (context too long)")
+        _emit(f"[embed] warning — {skipped} nodes skipped (context too long)")
 
-    print(f"[embed] done — ChromaDB collection now has {count()} documents")
+    _emit(f"[embed] done — ChromaDB collection now has {count()} documents")
     return 0
 
 

@@ -127,6 +127,8 @@ export interface IngestionStatus {
   current_source: string | null;
   queue: string[];
   completed: string[];
+  embed_done: number;
+  embed_total: number;
 }
 
 export interface SystemConfig {

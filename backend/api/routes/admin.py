@@ -35,6 +35,8 @@ class IngestionStatus(BaseModel):
     current_source: Optional[str] = None
     queue: List[str] = []
     completed: List[str] = []
+    embed_done: int = 0
+    embed_total: int = 0
 
 _status = IngestionStatus()
 _lock = asyncio.Lock()
@@ -42,6 +44,16 @@ _lock = asyncio.Lock()
 
 def _log(line: str) -> None:
     """Append a timestamped log line to the global status, keep last 200 lines."""
+    # Parse embedding progress lines: "[embed:progress] done/total pct"
+    if line.startswith("[embed:progress]"):
+        parts = line.split()
+        if len(parts) >= 2:
+            try:
+                done, total = parts[1].split("/")
+                _status.embed_done = int(done)
+                _status.embed_total = int(total)
+            except Exception:
+                pass
     ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
     _status.log_lines.append(f"[{ts}] {line}")
     if len(_status.log_lines) > 200:
@@ -188,6 +200,8 @@ async def _run_harvester_task_multi(source_cfgs: list[dict]):
         _status.error = None
         _status.log_lines = []
         _status.completed = []
+        _status.embed_done = 0
+        _status.embed_total = 0
         _status.queue = [c["name"] for c in source_cfgs]
         loop = asyncio.get_running_loop()
 
@@ -252,7 +266,7 @@ async def _run_harvester_task_multi(source_cfgs: list[dict]):
             _log("=== Re-indexing vectors (all sources) ===")
             _log("Fetching nodes from PostgreSQL (excluding GROUP + empty)...")
             try:
-                await loop.run_in_executor(None, run_embedding_pipeline)
+                await loop.run_in_executor(None, lambda: run_embedding_pipeline(on_progress=_log))
                 _log("Vector index rebuilt successfully.")
             except Exception as e:
                 _log(f"ERROR during vector re-indexing: {e}")
