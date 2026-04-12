@@ -181,7 +181,7 @@ export function buildTree(nodes: NodeSummary[]): SubpartGroup[] {
       : structuralParts.find((p) => /^\(?SUBPART/i.test(p));
     const subpartRaw = isCS25
       ? cs25Subpart(articleCode(node))
-      : (explicitSubpart ?? (structuralParts.length > 0 ? structuralParts[0] : "Other"));
+      : (explicitSubpart ?? "Other");
     // Find the section segment — only when subpart is explicit (not CS-25)
     const sectionRaw = (!isCS25 && explicitSubpart)
       ? (structuralParts.find((p) => /^SECTION\s+\d/i.test(p)) ?? "")
