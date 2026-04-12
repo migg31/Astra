@@ -326,7 +326,7 @@ export function TreePanel({
 
       {/* ── History drawer ── */}
       {historySourceKey && activeEntry && (
-        <div className="tree-history-drawer">
+        <div className={`tree-history-drawer${showHistory ? " is-open" : ""}`}>
           <button
             className="tree-history-drawer-header"
             onClick={() => setShowHistory((v) => !v)}

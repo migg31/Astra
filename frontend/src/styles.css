@@ -2880,7 +2880,10 @@ body,
   background: #fff;
   display: flex;
   flex-direction: column;
+}
+.tree-history-drawer.is-open {
   max-height: 45%;
+  flex-shrink: 1;
 }
 .tree-history-drawer-header {
   display: flex;
