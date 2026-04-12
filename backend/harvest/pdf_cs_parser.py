@@ -39,6 +39,13 @@ _ACNS_HEADING_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Pattern to detect CS-25 legacy article headings (old Arial ~9pt bold PDFs)
+# e.g. "CS 25.1 Applicability"  "AMC 25.101 General"  "GM 25.1 ..."
+_CS25_LEGACY_RE = re.compile(
+    r"^((?:CS|AMC|GM)\s+25[\.\-]\S+)",
+    re.IGNORECASE,
+)
+
 # Pattern to extract reference code from heading
 # e.g. "CS 25.581 Lightning protection" → "CS 25.581"
 # e.g. "AMC 25.581 Lightning protection" → "AMC 25.581"
@@ -58,7 +65,9 @@ _STRUCTURAL_SIZE_MIN = 17.5
 
 # Ignore page header/footer patterns
 _PAGE_HEADER_RE = re.compile(
-    r"^(Annex to ED Decision|Page \d+ of \d+|CS-\d+\s+Amendment|CS-ACNS)",
+    r"^(Annex to ED Decision|Page \d+ of \d+|CS-\d+\s+Amendment|CS-ACNS"
+    r"|BOOK\s+\d+|CS[\s\-\u2013]+25$|\d+[\-\u2013][A-Z][\-\u2013]\d+"
+    r"|(CS|AMC)\s+25\.\d+.*\.\.\.\.)",
     re.IGNORECASE,
 )
 
@@ -150,6 +159,7 @@ def parse_cs_pdf(pdf_path: Path, *, regulatory_source: str | None = None) -> Par
     current_type: str | None = None
     current_body_parts: list[str] = []
     current_hierarchy: str = ""
+    legacy_mode: bool = False  # True when current article was detected by pattern (small fonts)
 
     def _flush() -> None:
         if current_heading is None or current_type is None:
@@ -175,10 +185,25 @@ def parse_cs_pdf(pdf_path: Path, *, regulatory_source: str | None = None) -> Par
             text = blk.text.strip()
             size = blk.size
 
-            # Skip page headers/footers (9pt italic)
-            if size <= PAGE_HEADER_SIZE_MAX:
-                continue
             if _is_page_noise(text):
+                continue
+
+            # Legacy pattern detection (small-font PDFs) — must run before size filters
+            is_article_by_pattern = blk.bold and (
+                bool(_ACNS_HEADING_RE.match(text)) or bool(_CS25_LEGACY_RE.match(text))
+            )
+            if is_article_by_pattern:
+                node_type = _node_type(text)
+                if node_type:
+                    _flush()
+                    current_heading = text.replace("\n", " ").strip()
+                    current_type = node_type
+                    current_body_parts = []
+                    legacy_mode = True
+                    continue
+
+            # Skip page headers/footers (9pt italic) — after pattern check
+            if size <= PAGE_HEADER_SIZE_MAX:
                 continue
 
             # Structural heading (subpart / section) — flush current, update hierarchy
@@ -188,22 +213,22 @@ def parse_cs_pdf(pdf_path: Path, *, regulatory_source: str | None = None) -> Par
                 current_type = None
                 current_body_parts = []
                 current_hierarchy = text.replace("\n", " ").strip()
+                legacy_mode = False
                 continue
 
-            # Article heading — detected by font size OR by ACNS reference pattern
-            is_article_by_size = size >= ARTICLE_SIZE_MIN and blk.bold
-            is_article_by_pattern = bool(_ACNS_HEADING_RE.match(text)) and blk.bold
-            if is_article_by_size or is_article_by_pattern:
+            # Article heading — detected by font size (modern Calibri PDFs)
+            if size >= ARTICLE_SIZE_MIN and blk.bold:
                 node_type = _node_type(text)
                 if node_type:
                     _flush()
                     current_heading = text.replace("\n", " ").strip()
                     current_type = node_type
                     current_body_parts = []
+                    legacy_mode = False
                     continue
 
-            # Body text
-            if size >= BODY_SIZE_MIN and current_heading is not None:
+            # Body text — bypass size filter in legacy mode
+            if current_heading is not None and (legacy_mode or size >= BODY_SIZE_MIN):
                 current_body_parts.append(text)
 
     _flush()
