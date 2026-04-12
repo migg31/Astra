@@ -206,29 +206,10 @@ export function ArticlePanel({ node, loading, error, onNavigate, knownRefs, sibl
     <main className={"article-panel" + (showHistory ? " article-panel--split" : "")}>
       <div className="article-panel-top">
       <header className="article-header">
-        <div className="article-header-row">
-          <div className={`article-header-title article-header-${node.node_type}`}>
+        <div className={`article-header-title article-header-${node.node_type}`}>
             <span className={`badge badge-${node.node_type}`}>{node.node_type}</span>
             <span className="article-ref">{node.reference_code}</span>
             {node.title && <span className="article-title-text">{node.title}</span>}
-          </div>
-          <div className="article-header-actions">
-            {versionCheck?.is_outdated && versionCheck.latest_version && (
-              <span
-                className="article-outdated-badge"
-                title={`Newer version available: ${versionCheck.latest_version}`}
-              >
-                ⚠ {versionCheck.latest_version} available
-              </span>
-            )}
-            <button
-              className={"article-history-btn" + (showHistory ? " is-active" : "")}
-              onClick={() => setShowHistory((v) => !v)}
-              title="Version history"
-            >
-              ⏱ History
-            </button>
-          </div>
         </div>
 
         {/* Variant tabs — only shown when this article has multiple type variants */}
@@ -303,6 +284,21 @@ export function ArticlePanel({ node, loading, error, onNavigate, knownRefs, sibl
             {node.regulatory_source && (
               <span className="article-reg-source">{node.regulatory_source}</span>
             )}
+            {versionCheck?.is_outdated && versionCheck.latest_version && (
+              <span
+                className="article-outdated-badge"
+                title={`Newer version available: ${versionCheck.latest_version}`}
+              >
+                ⚠ {versionCheck.latest_version}
+              </span>
+            )}
+            <button
+              className={"article-history-btn" + (showHistory ? " is-active" : "")}
+              onClick={() => setShowHistory((v) => !v)}
+              title="Version history"
+            >
+              ⏱ History
+            </button>
           </span>
         </div>
       </header>
