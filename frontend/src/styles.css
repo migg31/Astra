@@ -1945,6 +1945,22 @@ body,
   justify-content: space-between;
   gap: 0.75rem;
 }
+.article-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+.article-outdated-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 0.2rem 0.5rem;
+  background: #fef9c3;
+  border: 1px solid #fcd34d;
+  border-radius: 5px;
+  color: #92400e;
+  white-space: nowrap;
+}
 .article-history-btn {
   flex-shrink: 0;
   padding: 0.25rem 0.65rem;

@@ -97,6 +97,20 @@ export function getNodeHistory(nodeId: string): Promise<NodeHistoryResponse> {
   return fetchJSON<NodeHistoryResponse>(`/api/history/nodes/${nodeId}`);
 }
 
+export interface VersionCheckResult {
+  source_root: string;
+  source_title: string;
+  easa_url: string;
+  indexed_version: string | null;
+  latest_version: string | null;
+  is_outdated: boolean;
+  checked_at: string;
+}
+
+export function getVersionCheck(): Promise<VersionCheckResult[]> {
+  return fetchJSON<VersionCheckResult[]>("/api/history/version-check");
+}
+
 // Admin API
 export function getStats(): Promise<SystemStats> {
   return fetchJSON<SystemStats>("/api/admin/stats");

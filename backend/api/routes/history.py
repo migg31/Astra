@@ -1,6 +1,7 @@
 """Version history endpoints for regulatory nodes and documents."""
 from __future__ import annotations
 
+import asyncio
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -9,6 +10,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.database.connection import get_session
+from backend.harvest.easa_fetcher import check_latest_version
 
 router = APIRouter(prefix="/api/history", tags=["history"])
 
@@ -46,6 +48,16 @@ class HarvestRunOut(BaseModel):
 class DocumentHistoryResponse(BaseModel):
     source_title: str
     runs: list[HarvestRunOut]
+
+
+class VersionCheckOut(BaseModel):
+    source_root: str
+    source_title: str
+    easa_url: str
+    indexed_version: str | None
+    latest_version: str | None
+    is_outdated: bool
+    checked_at: str
 
 
 # ── Node history ──────────────────────────────────────────────────────────────
@@ -163,3 +175,54 @@ async def get_document_history(
         ))
 
     return DocumentHistoryResponse(source_title=source_title, runs=runs)
+
+
+# ── Version staleness check ───────────────────────────────────────────────────
+
+@router.get("/version-check", response_model=list[VersionCheckOut])
+async def version_check(session: AsyncSession = Depends(get_session)):
+    """Check all indexed documents against EASA website for version staleness.
+
+    Makes one lightweight HTTP request per indexed document (reads only 32 KB
+    of HTML — no ZIP download). Results are returned sorted: outdated first.
+    """
+    # Fetch all indexed documents with their EASA URL and indexed version
+    rows = await session.execute(text("""
+        SELECT
+            hd.title,
+            hd.version_label,
+            hd.url                          AS easa_url,
+            MIN(SPLIT_PART(rn.hierarchy_path, ' / ', 1)) AS source_root
+        FROM harvest_documents hd
+        LEFT JOIN regulatory_nodes rn ON rn.source_doc_id = hd.doc_id
+        GROUP BY hd.title, hd.version_label, hd.url
+        HAVING COUNT(rn.node_id) > 0
+        ORDER BY hd.title
+    """))
+    docs = list(rows.mappings())
+
+    if not docs:
+        return []
+
+    # Run checks concurrently (one per doc) in a thread pool to avoid blocking
+    def _check(doc: dict) -> VersionCheckOut:
+        result = check_latest_version(doc["easa_url"], doc["version_label"])
+        return VersionCheckOut(
+            source_root=doc["source_root"] or doc["title"],
+            source_title=doc["title"],
+            easa_url=doc["easa_url"],
+            indexed_version=result.indexed_version,
+            latest_version=result.latest_version,
+            is_outdated=result.is_outdated,
+            checked_at=result.checked_at.isoformat(),
+        )
+
+    loop = asyncio.get_event_loop()
+    tasks = [
+        loop.run_in_executor(None, _check, dict(doc))
+        for doc in docs
+    ]
+    results: list[VersionCheckOut] = await asyncio.gather(*tasks)
+
+    # Sort: outdated first, then alphabetical
+    return sorted(results, key=lambda r: (not r.is_outdated, r.source_title))

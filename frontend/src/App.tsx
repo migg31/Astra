@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { getCatalog, getGraph, getNeighbors, getNode, listAllNodes } from "./api";
-import type { CatalogEntry } from "./api";
+import { getCatalog, getGraph, getNeighbors, getNode, getVersionCheck, listAllNodes } from "./api";
+import type { CatalogEntry, VersionCheckResult } from "./api";
 import { AdminConsole } from "./components/AdminConsole";
 import { ArticlePanel } from "./components/ArticlePanel";
 import { AskPanel } from "./components/AskPanel";
@@ -24,6 +24,7 @@ export default function App() {
   const [mode, setMode] = useState<AppMode>("navigate");
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [catalog, setCatalog] = useState<CatalogEntry[]>([]);
+  const [versionChecks, setVersionChecks] = useState<VersionCheckResult[]>([]);
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [allNodes, setAllNodes] = useState<NodeSummary[] | null>(null);
   const [rootError, setRootError] = useState<string | null>(null);
@@ -45,6 +46,11 @@ export default function App() {
   // ── Load catalog ──
   useEffect(() => {
     getCatalog().then(setCatalog).catch(console.error);
+  }, []);
+
+  // ── Version staleness check (runs once on mount, non-blocking) ──
+  useEffect(() => {
+    getVersionCheck().then(setVersionChecks).catch(() => {});
   }, []);
 
   // ── Load nodes ──
@@ -290,6 +296,7 @@ export default function App() {
             siblings={articleSiblings}
             onSelectSibling={setSelected}
             catalogEntry={catalog.find((e) => e.source_root === selectedSource) ?? null}
+            versionCheck={versionChecks.find((v) => v.source_root === selectedSource) ?? null}
           />
           <NeighborsPanel
             neighbors={neighbors}
@@ -306,6 +313,7 @@ export default function App() {
       {mode === "navigate" && (
         <NavigatePanel
           catalog={catalog}
+          versionChecks={versionChecks}
           availableSources={new Set(documents.map((d) => d.source))}
           onNavigateTo={handleNavigateToSource}
         />

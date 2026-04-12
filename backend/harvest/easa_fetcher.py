@@ -95,3 +95,72 @@ def fetch_easa_xml(
 def fetch_part21_xml(data_dir: Path) -> FetchedDocument:
     """Legacy wrapper for Part 21."""
     return fetch_easa_xml(data_dir, PART21_XML_ZIP_URL, "easa-part21")
+
+
+import re as _re  # noqa: E402 — kept local to avoid polluting module namespace
+
+_VERSION_PATTERNS = [
+    _re.compile(r"Amendment\s+(\d+)", _re.IGNORECASE),
+    _re.compile(r"Issue\s+(\d+)", _re.IGNORECASE),
+    _re.compile(r"Revision\s+(\d+)", _re.IGNORECASE),
+    _re.compile(r"Initial\s+Issue", _re.IGNORECASE),
+]
+
+
+@dataclass
+class VersionCheckResult:
+    source_url: str
+    latest_version: str | None   # e.g. "Amendment 27"
+    indexed_version: str | None  # from DB
+    is_outdated: bool            # latest != indexed (both non-null)
+    checked_at: datetime
+
+
+def check_latest_version(url: str, indexed_version: str | None) -> VersionCheckResult:
+    """Scrape the EASA download page to extract the current version label.
+
+    Makes a single lightweight HTTP GET on the HTML page (not the ZIP).
+    The version is extracted from the page title or visible heading text.
+    Returns a VersionCheckResult with is_outdated=True if the online version
+    differs from the indexed one.
+    """
+    checked_at = datetime.now(timezone.utc)
+    latest_version: str | None = None
+
+    try:
+        req = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": USER_AGENT,
+                "Accept": "text/html",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=15) as resp:  # noqa: S310
+            # Read only first 32 KB — version info is always in the page head/hero
+            raw = resp.read(32_768).decode("utf-8", errors="ignore")
+
+        # Try each pattern against the page text
+        for pat in _VERSION_PATTERNS:
+            m = pat.search(raw)
+            if m:
+                latest_version = m.group(0).strip()
+                # Normalize capitalisation
+                latest_version = latest_version[0].upper() + latest_version[1:]
+                break
+
+    except Exception:
+        pass  # Network error — return is_outdated=False conservatively
+
+    is_outdated = (
+        latest_version is not None
+        and indexed_version is not None
+        and latest_version.lower() != indexed_version.lower()
+    )
+
+    return VersionCheckResult(
+        source_url=url,
+        latest_version=latest_version,
+        indexed_version=indexed_version,
+        is_outdated=is_outdated,
+        checked_at=checked_at,
+    )

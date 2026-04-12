@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { CatalogEntry } from "../api";
+import type { CatalogEntry, VersionCheckResult } from "../api";
 import type { NodeDetail, NodeSummary, NodeType } from "../types";
 import { NodeHistoryPanel } from "./NodeHistoryPanel";
 import { typeOrder } from "../tree";
@@ -15,6 +15,8 @@ interface Props {
   onSelectSibling?: (node: NodeSummary) => void;
   /** Catalog metadata for the currently selected document */
   catalogEntry?: CatalogEntry | null;
+  /** Version staleness check result for the current document */
+  versionCheck?: VersionCheckResult | null;
 }
 
 // Matches any Part 21 article reference: 21.A.20, 21.B.80, 21.A.101A, etc.
@@ -95,7 +97,7 @@ const DOMAIN_META: Record<string, { bg: string; text: string; label: string }> =
   "aerodromes":               { bg: "#134e4a", text: "#99f6e4",  label: "Aerodromes" },
 };
 
-function DocInfoPage({ entry }: { entry: CatalogEntry | null }) {
+function DocInfoPage({ entry, versionCheck }: { entry: CatalogEntry | null; versionCheck?: VersionCheckResult | null }) {
   if (!entry) {
     return (
       <main className="article-panel article-empty">
@@ -130,6 +132,15 @@ function DocInfoPage({ entry }: { entry: CatalogEntry | null }) {
             </span>
           )}
         </div>
+        {versionCheck?.is_outdated && versionCheck.latest_version && (
+          <div className="doc-info-amended">
+            <span>⚠</span>
+            <span>
+              Indexed version outdated — <strong>{versionCheck.latest_version}</strong> is available on EASA.
+              The content may not reflect the latest regulatory requirements.
+            </span>
+          </div>
+        )}
         <a
           href={entry.easa_url}
           target="_blank"
@@ -155,7 +166,7 @@ function groupSiblingsByType(siblings: NodeSummary[]): Map<NodeType, NodeSummary
   return groups;
 }
 
-export function ArticlePanel({ node, loading, error, onNavigate, knownRefs, siblings, onSelectSibling, catalogEntry }: Props) {
+export function ArticlePanel({ node, loading, error, onNavigate, knownRefs, siblings, onSelectSibling, catalogEntry, versionCheck }: Props) {
   const articleRef = useRef<HTMLElement>(null);
   const [expandedType, setExpandedType] = useState<NodeType | null>(null);
   const [showHistory, setShowHistory] = useState(false);
@@ -178,7 +189,7 @@ export function ArticlePanel({ node, loading, error, onNavigate, knownRefs, sibl
     return <main className="article-panel article-empty error">{error}</main>;
   }
   if (!node) {
-    return <DocInfoPage entry={catalogEntry ?? null} />;
+    return <DocInfoPage entry={catalogEntry ?? null} versionCheck={versionCheck} />;
   }
 
   function handleArticleClick(e: React.MouseEvent<HTMLElement>) {
@@ -206,13 +217,23 @@ export function ArticlePanel({ node, loading, error, onNavigate, knownRefs, sibl
             <span className="article-ref">{node.reference_code}</span>
             {node.title && <span className="article-title-text">{node.title}</span>}
           </div>
-          <button
-            className={"article-history-btn" + (showHistory ? " is-active" : "")}
-            onClick={() => setShowHistory((v) => !v)}
-            title="Version history"
-          >
-            ⏱ History
-          </button>
+          <div className="article-header-actions">
+            {versionCheck?.is_outdated && versionCheck.latest_version && (
+              <span
+                className="article-outdated-badge"
+                title={`Newer version available: ${versionCheck.latest_version}`}
+              >
+                ⚠ {versionCheck.latest_version} available
+              </span>
+            )}
+            <button
+              className={"article-history-btn" + (showHistory ? " is-active" : "")}
+              onClick={() => setShowHistory((v) => !v)}
+              title="Version history"
+            >
+              ⏱ History
+            </button>
+          </div>
         </div>
 
         {/* Variant tabs — only shown when this article has multiple type variants */}

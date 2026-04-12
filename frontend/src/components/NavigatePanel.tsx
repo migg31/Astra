@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { CatalogEntry } from "../api";
+import type { CatalogEntry, VersionCheckResult } from "../api";
 
 const CATEGORY_LABELS: Record<string, string> = {
   basic: "Basic Regulation",
@@ -46,6 +46,7 @@ function domainFilterKey(domain: string): string {
 
 interface Props {
   catalog: CatalogEntry[];
+  versionChecks?: VersionCheckResult[];
   /** sources available in Explorer (from allNodes hierarchy roots) */
   availableSources: Set<string>;
   onNavigateTo: (source: string) => void;
@@ -61,10 +62,14 @@ function DocCard({
   entry,
   availableSources,
   onNavigateTo,
+  isOutdated,
+  latestVersion,
 }: {
   entry: CatalogEntry;
   availableSources: Set<string>;
   onNavigateTo: (source: string) => void;
+  isOutdated?: boolean;
+  latestVersion?: string | null;
 }) {
   // source_root is the exact first hierarchy_path root from DB — pass directly to App.
   // canExplore requires source_root to be present in availableSources (doc loaded in memory).
@@ -118,6 +123,11 @@ function DocCard({
             </span>
           )}
         </div>
+        {isOutdated && latestVersion && (
+          <div className="nav-card-amended">
+            <span className="nav-amended-badge">⚠ Newer version available: {latestVersion}</span>
+          </div>
+        )}
         {canExplore && (
           <div className="nav-card-action">
             <span className="nav-action-link" style={{ color: domain.text }}>Open in Consult →</span>
@@ -146,7 +156,8 @@ function DocCard({
   );
 }
 
-export function NavigatePanel({ catalog, availableSources, onNavigateTo }: Props) {
+export function NavigatePanel({ catalog, versionChecks = [], availableSources, onNavigateTo }: Props) {
+  const versionCheckMap = new Map(versionChecks.map((v) => [v.source_root, v]));
   const [search, setSearch] = useState("");
   // excludedCategories / excludedDomains / hiddenIndexState: empty = all visible (default)
   const [excludedCategories, setExcludedCategories] = useState<Set<string>>(new Set());
@@ -313,14 +324,19 @@ export function NavigatePanel({ catalog, availableSources, onNavigateTo }: Props
               </span>
             </h3>
             <div className="nav-grid">
-              {entries.map((entry) => (
-                <DocCard
-                  key={entry.id}
-                  entry={entry}
-                  availableSources={availableSources}
-                  onNavigateTo={onNavigateTo}
-                />
-              ))}
+              {entries.map((entry) => {
+                const vc = entry.source_root ? versionCheckMap.get(entry.source_root) : undefined;
+                return (
+                  <DocCard
+                    key={entry.id}
+                    entry={entry}
+                    availableSources={availableSources}
+                    onNavigateTo={onNavigateTo}
+                    isOutdated={vc?.is_outdated}
+                    latestVersion={vc?.latest_version}
+                  />
+                );
+              })}
             </div>
           </section>
         ))}
