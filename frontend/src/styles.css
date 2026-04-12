@@ -2820,6 +2820,17 @@ body,
   white-space: nowrap;
 }
 
+/* ── Root error banner ── */
+.root-error-banner {
+  background: #fef3c7;
+  border-bottom: 1px solid #fcd34d;
+  color: #92400e;
+  font-size: 0.75rem;
+  padding: 0.35rem 1rem;
+  text-align: center;
+  flex-shrink: 0;
+}
+
 /* ── Tree history button ── */
 .tree-history-btn {
   display: flex;

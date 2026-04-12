@@ -66,7 +66,11 @@ export default function App() {
           resp.items.find((n) => n.reference_code === "21.A.91") ?? resp.items[0];
         if (defaultNode) setSelected(defaultNode);
       })
-      .catch((err: Error) => setRootError(err.message));
+      .catch((err: Error) => {
+        // Even if nodes fail to load, show the Navigate panel with catalog
+        setAllNodes([]);
+        setRootError(err.message);
+      });
   }, []);
 
   // ── Fetch article detail on selection ──
@@ -210,16 +214,7 @@ export default function App() {
 
   // ── Render ──
 
-  if (rootError) {
-    return (
-      <div className="root-error">
-        <h1>Failed to load catalogue</h1>
-        <p>{rootError}</p>
-        <p>Is the API running on http://localhost:8000 ?</p>
-      </div>
-    );
-  }
-  if (!allNodes) {
+  if (allNodes === null) {
     return <div className="root-loading">Loading catalogue…</div>;
   }
 
@@ -270,6 +265,12 @@ export default function App() {
           </button>
         </div>
       </nav>
+
+      {rootError && (
+        <div className="root-error-banner">
+          ⚠ API unavailable — {rootError}. Navigate shows catalog only.
+        </div>
+      )}
 
       {mode === "consult" && (
         <div className="app-grid">
