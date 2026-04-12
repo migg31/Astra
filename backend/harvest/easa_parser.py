@@ -551,8 +551,13 @@ def parse_easa_xml(xml_path: Path) -> ParseResult:
     for node in result.nodes:
         if node.node_type not in ("AMC", "GM"):
             continue
-        # Strip the type prefix (AMC, AMC2, GM, GM3, etc.) to get the bare article code
-        stripped = re.sub(r"^(?:AMC\d*|GM\d*)\s+", "", node.reference_code)
+        # For "Appendix X to GM 21.A.101" — extract the article code after "to GM/AMC/CS"
+        app_match = re.search(r"\bto\s+(?:AMC\d*|GM\d*|CS)\s+(" + ARTICLE_CODE_PATTERN + r")", node.reference_code, re.IGNORECASE)
+        if app_match:
+            stripped = app_match.group(1)
+        else:
+            # Strip the type prefix (AMC, AMC2, GM, GM3, etc.) to get the bare article code
+            stripped = re.sub(r"^(?:AMC\d*|GM\d*)\s+", "", node.reference_code)
         m = re.search(ARTICLE_CODE_PATTERN, stripped)
         if not m:
             continue
