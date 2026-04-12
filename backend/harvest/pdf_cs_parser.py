@@ -126,8 +126,9 @@ def _extract_blocks(page: pymupdf.Page) -> list[_Block]:
         for line in b.get("lines", []):
             line_parts: list[str] = []
             for span in line.get("spans", []):
-                t = span["text"]
-                if not t.strip():
+                t = span["text"].replace("\xa0", " ")
+                t = " ".join(t.split())  # collapse all whitespace
+                if not t:
                     continue
                 line_parts.append(t)
                 sizes.append(span["size"])
