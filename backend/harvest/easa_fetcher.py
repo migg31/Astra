@@ -65,7 +65,7 @@ def fetch_easa_xml(
     # ── PDF response (CS amendments, CS-ACNS) ────────────────────────────────
     if "pdf" in content_type.lower() or raw_path.read_bytes()[:4] == b"%PDF":
         pdf_path = target_dir / "document.pdf"
-        raw_path.rename(pdf_path)
+        raw_path.replace(pdf_path)
         return FetchedDocument(
             path=pdf_path,
             content_hash=_hash_file(pdf_path),
@@ -76,7 +76,7 @@ def fetch_easa_xml(
 
     # ── ZIP response (EasyAccess Rules: DOCX or XML inside) ──────────────────
     zip_path = target_dir / "package.zip"
-    raw_path.rename(zip_path)
+    raw_path.replace(zip_path)
 
     with zipfile.ZipFile(zip_path) as zf:
         all_files = zf.infolist()

@@ -32,6 +32,13 @@ _CS_RE  = re.compile(r"^CS[\s\-]", re.IGNORECASE)
 _AMC_RE = re.compile(r"^AMC[\s\d\-]", re.IGNORECASE)
 _GM_RE  = re.compile(r"^GM[\s\d]",  re.IGNORECASE)
 
+# Pattern to detect CS-ACNS article references (older Verdana PDFs where size == body)
+# e.g. "CS ACNS.A.GEN.001   Applicability" or "AMC1 ACNS.B.DLS.B1.020 ..."
+_ACNS_HEADING_RE = re.compile(
+    r"^((?:CS|AMC\d*|GM\d*)\s+ACNS\.\S+)",
+    re.IGNORECASE,
+)
+
 # Pattern to extract reference code from heading
 # e.g. "CS 25.581 Lightning protection" → "CS 25.581"
 # e.g. "AMC 25.581 Lightning protection" → "AMC 25.581"
@@ -183,8 +190,10 @@ def parse_cs_pdf(pdf_path: Path, *, regulatory_source: str | None = None) -> Par
                 current_hierarchy = text.replace("\n", " ").strip()
                 continue
 
-            # Article heading
-            if size >= ARTICLE_SIZE_MIN and blk.bold:
+            # Article heading — detected by font size OR by ACNS reference pattern
+            is_article_by_size = size >= ARTICLE_SIZE_MIN and blk.bold
+            is_article_by_pattern = bool(_ACNS_HEADING_RE.match(text)) and blk.bold
+            if is_article_by_size or is_article_by_pattern:
                 node_type = _node_type(text)
                 if node_type:
                     _flush()
@@ -198,6 +207,12 @@ def parse_cs_pdf(pdf_path: Path, *, regulatory_source: str | None = None) -> Par
                 current_body_parts.append(text)
 
     _flush()
+
+    # Deduplicate by (node_type, reference_code) — keep last occurrence
+    seen: dict[tuple[str, str], ParsedNode] = {}
+    for n in nodes:
+        seen[(n.node_type, n.reference_code)] = n
+    nodes = list(seen.values())
 
     return ParseResult(
         nodes=nodes,
