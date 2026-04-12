@@ -75,13 +75,15 @@ function VersionRow({ v }: { v: DocumentVersion }) {
 
       {/* Right: date + link */}
       <span className="dhl-date">{formatDate(v.pub_date)}</span>
-      <a
+      <button
         className="dhl-link"
-        href={v.pdf_url ?? v.url}
-        target="_blank"
-        rel="noopener noreferrer"
-        title="Ouvrir sur EASA"
-      >↗</a>
+        title="Télécharger depuis EASA"
+        onClick={() => {
+          if (confirm(`Télécharger "${v.version_label}" depuis le site EASA ?`)) {
+            window.open(v.pdf_url ?? v.url, "_blank", "noopener,noreferrer");
+          }
+        }}
+      >↗</button>
     </div>
   );
 }

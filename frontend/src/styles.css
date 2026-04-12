@@ -2970,5 +2970,9 @@ body,
   text-decoration: none;
   flex-shrink: 0;
   padding: 0 0.2rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
 }
 .dhl-link:hover { color: #2563eb; }
