@@ -176,6 +176,38 @@ export function buildTree(nodes: NodeSummary[]): SubpartGroup[] {
       sections.push({ name: sectionName, articles: sortArticles(articleGroups) });
     }
 
+    // Merge articles from the unnamed section ("") into named sections when the same
+    // articleCode already exists there (PDF CS node + XML AMC/GM node deduplication)
+    const unnamedIdx = sections.findIndex((s) => !s.name);
+    if (unnamedIdx !== -1 && sections.length > 1) {
+      const unnamed = sections[unnamedIdx];
+      const namedSections = sections.filter((_, i) => i !== unnamedIdx);
+      const namedArticleKeys = new Set(
+        namedSections.flatMap((s) => s.articles.map((a) => a.articleCode))
+      );
+      const stillUnnamed: ArticleGroup[] = [];
+      for (const art of unnamed.articles) {
+        if (namedArticleKeys.has(art.articleCode)) {
+          // Merge nodes into whichever named section has this article
+          for (const ns of namedSections) {
+            const target = ns.articles.find((a) => a.articleCode === art.articleCode);
+            if (target) {
+              target.nodes.push(...art.nodes);
+              sortNodes(target.nodes);
+              break;
+            }
+          }
+        } else {
+          stillUnnamed.push(art);
+        }
+      }
+      const merged: SectionGroup[] = [];
+      if (stillUnnamed.length > 0) merged.push({ name: "", articles: sortArticles(stillUnnamed) });
+      merged.push(...namedSections);
+      sections.length = 0;
+      sections.push(...merged);
+    }
+
     // Sort sections: unnamed first, then by name
     sections.sort((a, b) => {
       if (!a.name && !b.name) return 0;
