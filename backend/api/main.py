@@ -6,6 +6,7 @@ from backend.api.routes import ask as ask_routes
 from backend.api.routes import graph as graph_routes
 from backend.api.routes import nodes as nodes_routes
 from backend.api.routes import admin as admin_routes
+from backend.api.routes import history as history_routes
 from backend.database.connection import engine
 
 app = FastAPI(title="Astra API", version="0.1.0")
@@ -24,6 +25,7 @@ app.include_router(nodes_routes.router)
 app.include_router(ask_routes.router)
 app.include_router(graph_routes.router)
 app.include_router(admin_routes.router)
+app.include_router(history_routes.router)
 
 
 @app.get("/health")

@@ -8,6 +8,8 @@ Run with:
 from __future__ import annotations
 
 import argparse
+import difflib
+import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -19,6 +21,28 @@ from backend.config import settings
 from backend.harvest.easa_fetcher import fetch_easa_xml, fetch_part21_xml, PART21_XML_ZIP_URL
 from backend.harvest.easa_parser import parse_easa_xml
 from backend.harvest.models import ParseResult
+
+
+def _word_diff(old: str, new: str) -> list[dict]:
+    """Compute a word-level diff between two texts.
+    Returns a list of {op, text} dicts: op = 'equal' | 'insert' | 'delete'.
+    Truncated to 500 ops to keep JSONB size reasonable.
+    """
+    old_words = old.split()
+    new_words = new.split()
+    matcher = difflib.SequenceMatcher(None, old_words, new_words, autojunk=False)
+    ops: list[dict] = []
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == "equal":
+            ops.append({"op": "equal", "text": " ".join(old_words[i1:i2])})
+        elif tag == "insert":
+            ops.append({"op": "insert", "text": " ".join(new_words[j1:j2])})
+        elif tag == "delete":
+            ops.append({"op": "delete", "text": " ".join(old_words[i1:i2])})
+        elif tag == "replace":
+            ops.append({"op": "delete", "text": " ".join(old_words[i1:i2])})
+            ops.append({"op": "insert", "text": " ".join(new_words[j1:j2])})
+    return ops[:500]
 
 # Catalog of available EASA sources
 REGULATORY_SOURCES = {
@@ -138,8 +162,19 @@ def upsert_document(
     return cur.fetchone()[0]
 
 
-def upsert_nodes(cur, doc_id: str, result: ParseResult) -> dict[tuple[str, str], str]:
-    """Upsert all parsed nodes and return a mapping (node_type, reference_code) → node_id."""
+def upsert_nodes(cur, doc_id: str, result: ParseResult, version_label: str) -> dict[tuple[str, str], str]:
+    """Upsert all parsed nodes, record version snapshots, return (node_type, reference_code) → node_id."""
+
+    # ── 1. Fetch current hashes + content for changed-node detection ──────
+    cur.execute(
+        "SELECT node_type::text, reference_code, node_id, content_hash, content_text "
+        "FROM regulatory_nodes"
+    )
+    existing: dict[tuple[str, str], tuple[str, str, str]] = {
+        (r[0], r[1]): (str(r[2]), r[3], r[4]) for r in cur.fetchall()
+    }
+
+    # ── 2. Upsert nodes ───────────────────────────────────────────────────
     rows = [
         (
             n.node_type,
@@ -180,10 +215,61 @@ def upsert_nodes(cur, doc_id: str, result: ParseResult) -> dict[tuple[str, str],
         template="(%s::node_type, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
     )
 
+    # ── 3. Reload node_ids after upsert ──────────────────────────────────
     cur.execute(
         "SELECT node_type::text, reference_code, node_id FROM regulatory_nodes"
     )
-    return {(r[0], r[1]): r[2] for r in cur.fetchall()}
+    node_map = {(r[0], r[1]): str(r[2]) for r in cur.fetchall()}
+
+    # ── 4. Build version snapshots ────────────────────────────────────────
+    version_rows: list[tuple] = []
+    counters = {"added": 0, "modified": 0, "unchanged": 0}
+
+    for n in result.nodes:
+        key = (n.node_type, n.reference_code)
+        node_id = node_map.get(key)
+        if not node_id:
+            continue
+
+        prev = existing.get(key)
+        if prev is None:
+            change_type = "added"
+            diff_prev = None
+        elif prev[1] != n.content_hash:
+            change_type = "modified"
+            diff_prev = json.dumps(_word_diff(prev[2] or "", n.content_text or ""))
+        else:
+            change_type = "unchanged"
+            diff_prev = None
+
+        counters[change_type] = counters.get(change_type, 0) + 1
+
+        # Only persist added/modified snapshots (skip unchanged to save space)
+        if change_type in ("added", "modified"):
+            version_rows.append((
+                node_id,
+                version_label,
+                n.content_text,
+                n.content_html,
+                n.content_hash,
+                change_type,
+                diff_prev,
+            ))
+
+    if version_rows:
+        execute_values(
+            cur,
+            """
+            INSERT INTO regulatory_node_versions
+                (node_id, version_label, content_text, content_html,
+                 content_hash, change_type, diff_prev)
+            VALUES %s
+            """,
+            version_rows,
+            template="(%s, %s, %s, %s, %s, %s, %s::jsonb)",
+        )
+
+    return node_map, counters
 
 
 def upsert_edges(cur, node_map: dict[tuple[str, str], str], result: ParseResult) -> int:
@@ -222,6 +308,7 @@ def ingest(xml_path: Path, *, source_name: str, source_url: str, external_id: st
     result = parse_easa_xml(xml_path)
 
     title = result.source_document_title or source_name
+    version_label = result.source_version or "Unknown"
 
     with psycopg2.connect(settings.database_url_sync) as conn:
         with conn.cursor() as cur:
@@ -234,12 +321,31 @@ def ingest(xml_path: Path, *, source_name: str, source_url: str, external_id: st
                 url=source_url,
                 content_hash=content_hash,
                 raw_path=str(xml_path.resolve()),
-                version_label=result.source_version,
+                version_label=version_label,
                 pub_date=result.source_pub_time.date() if result.source_pub_time else None,
                 amended_by=result.source_version,
             )
-            node_map = upsert_nodes(cur, doc_id, result)
+            node_map, counters = upsert_nodes(cur, doc_id, result, version_label)
             edges_inserted = upsert_edges(cur, node_map, result)
+
+            # ── Record harvest run summary ────────────────────────────────
+            cur.execute(
+                """
+                INSERT INTO document_harvest_runs
+                    (doc_id, version_label, nodes_added, nodes_modified,
+                     nodes_deleted, nodes_unchanged, nodes_total)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    doc_id,
+                    version_label,
+                    counters.get("added", 0),
+                    counters.get("modified", 0),
+                    counters.get("deleted", 0),
+                    counters.get("unchanged", 0),
+                    len(result.nodes),
+                ),
+            )
         conn.commit()
 
     return {
@@ -247,6 +353,9 @@ def ingest(xml_path: Path, *, source_name: str, source_url: str, external_id: st
         "source_id": source_id,
         "doc_id": doc_id,
         "nodes": len(result.nodes),
+        "nodes_added": counters.get("added", 0),
+        "nodes_modified": counters.get("modified", 0),
+        "nodes_unchanged": counters.get("unchanged", 0),
         "edges_attempted": len(result.edges),
         "edges_inserted": edges_inserted,
         "pub_time": result.source_pub_time,
