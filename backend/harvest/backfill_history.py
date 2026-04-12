@@ -118,6 +118,7 @@ def _run_source(source: dict, data_dir: Path, dry_run: bool) -> None:
                 external_id=external_id,
                 content_hash=fetched.content_hash,
                 seen_keys=seen_keys,
+                is_latest=False,  # historical: never overwrite regulatory_nodes
             )
             print(f"  Nodes   : {report['nodes']} total")
             print(f"    added   : {report.get('nodes_added', 0)}")

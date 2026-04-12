@@ -139,13 +139,14 @@ def upsert_document(
     version_label: str | None = None,
     pub_date=None,
     amended_by: str | None = None,
+    is_latest: bool = False,
 ) -> str:
     cur.execute(
         """
         INSERT INTO harvest_documents
             (source_id, external_id, title, url, content_hash, raw_path,
-             version_label, pub_date, amended_by)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+             version_label, pub_date, amended_by, is_latest)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (source_id, external_id) DO UPDATE
             SET title         = EXCLUDED.title,
                 url           = EXCLUDED.url,
@@ -154,11 +155,12 @@ def upsert_document(
                 version_label = EXCLUDED.version_label,
                 pub_date      = EXCLUDED.pub_date,
                 amended_by    = EXCLUDED.amended_by,
+                is_latest     = EXCLUDED.is_latest,
                 fetched_at    = NOW()
         RETURNING doc_id
         """,
         (source_id, external_id, title, url, content_hash, raw_path,
-         version_label, pub_date, amended_by),
+         version_label, pub_date, amended_by, is_latest),
     )
     return cur.fetchone()[0]
 
@@ -169,12 +171,14 @@ def upsert_nodes(
     result: ParseResult,
     version_label: str,
     seen_keys: set[tuple[str, str]] | None = None,
+    is_latest: bool = False,
 ) -> dict[tuple[str, str], str]:
     """Upsert all parsed nodes, record version snapshots, return (node_type, reference_code) → node_id.
 
+    is_latest: if True, fully upsert into regulatory_nodes (update content + hierarchy_path).
+               if False (historical backfill), only write to regulatory_node_versions — never
+               overwrite the canonical state in regulatory_nodes.
     seen_keys: optional shared set across multiple sources in the same run.
-    Nodes already present in seen_keys are skipped for snapshot recording
-    to avoid duplicate 'modified' entries when shared nodes appear in several sources.
     """
 
     # ── 1. Fetch current hashes + content for changed-node detection ──────
@@ -186,7 +190,7 @@ def upsert_nodes(
         (r[0], r[1]): (str(r[2]), r[3], r[4]) for r in cur.fetchall()
     }
 
-    # ── 2. Upsert nodes ───────────────────────────────────────────────────
+    # ── 2. Upsert nodes (only when is_latest) ────────────────────────────
     rows = [
         (
             n.node_type,
@@ -203,31 +207,32 @@ def upsert_nodes(
         )
         for n in result.nodes
     ]
-    execute_values(
-        cur,
-        """
-        INSERT INTO regulatory_nodes
-            (node_type, reference_code, title, content_text, content_html, content_hash,
-             hierarchy_path, source_doc_id, regulatory_source,
-             applicability_date, entry_into_force_date)
-        VALUES %s
-        ON CONFLICT (node_type, reference_code) DO UPDATE
-            SET title                 = EXCLUDED.title,
-                content_text          = EXCLUDED.content_text,
-                content_html          = EXCLUDED.content_html,
-                content_hash          = EXCLUDED.content_hash,
-                hierarchy_path        = EXCLUDED.hierarchy_path,
-                source_doc_id         = EXCLUDED.source_doc_id,
-                regulatory_source     = EXCLUDED.regulatory_source,
-                applicability_date    = EXCLUDED.applicability_date,
-                entry_into_force_date = EXCLUDED.entry_into_force_date,
-                updated_at            = NOW()
-        """,
-        rows,
-        template="(%s::node_type, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
-    )
+    if is_latest:
+        execute_values(
+            cur,
+            """
+            INSERT INTO regulatory_nodes
+                (node_type, reference_code, title, content_text, content_html, content_hash,
+                 hierarchy_path, source_doc_id, regulatory_source,
+                 applicability_date, entry_into_force_date)
+            VALUES %s
+            ON CONFLICT (node_type, reference_code) DO UPDATE
+                SET title                 = EXCLUDED.title,
+                    content_text          = EXCLUDED.content_text,
+                    content_html          = EXCLUDED.content_html,
+                    content_hash          = EXCLUDED.content_hash,
+                    hierarchy_path        = EXCLUDED.hierarchy_path,
+                    source_doc_id         = EXCLUDED.source_doc_id,
+                    regulatory_source     = EXCLUDED.regulatory_source,
+                    applicability_date    = EXCLUDED.applicability_date,
+                    entry_into_force_date = EXCLUDED.entry_into_force_date,
+                    updated_at            = NOW()
+            """,
+            rows,
+            template="(%s::node_type, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+        )
 
-    # ── 3. Reload node_ids after upsert ──────────────────────────────────
+    # ── 3. Reload node_ids ────────────────────────────────────────────────
     cur.execute(
         "SELECT node_type::text, reference_code, node_id FROM regulatory_nodes"
     )
@@ -322,7 +327,7 @@ def upsert_edges(cur, node_map: dict[tuple[str, str], str], result: ParseResult)
     return len(rows)
 
 
-def ingest(xml_path: Path, *, source_name: str, source_url: str, external_id: str, content_hash: str, seen_keys: set[tuple[str, str]] | None = None) -> dict:
+def ingest(xml_path: Path, *, source_name: str, source_url: str, external_id: str, content_hash: str, seen_keys: set[tuple[str, str]] | None = None, is_latest: bool = False) -> dict:
     if xml_path.suffix.lower() == ".pdf":
         result = parse_cs_pdf(xml_path, regulatory_source=source_name)
     else:
@@ -345,8 +350,9 @@ def ingest(xml_path: Path, *, source_name: str, source_url: str, external_id: st
                 version_label=version_label,
                 pub_date=result.source_pub_time.date() if result.source_pub_time else None,
                 amended_by=result.source_version,
+                is_latest=is_latest,
             )
-            node_map, counters = upsert_nodes(cur, doc_id, result, version_label, seen_keys=seen_keys)
+            node_map, counters = upsert_nodes(cur, doc_id, result, version_label, seen_keys=seen_keys, is_latest=is_latest)
             edges_inserted = upsert_edges(cur, node_map, result)
 
             # ── Record harvest run summary ────────────────────────────────
