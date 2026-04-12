@@ -1,4 +1,4 @@
-# Astra (v0.2.0)
+# Astra (v0.3.0)
 
 Aviation Type Certification expertise platform for EASA Part 21 professionals.
 
@@ -8,10 +8,10 @@ Full-stack application covering HARVEST, EXPLORE, and **ASK (RAG)** layers.
 
 | Layer | Status | Detail |
 |---|---|---|
-| HARVEST | ✅ | EASA Easy Access Rules XML parser (Part 21 Subparts B, D, E, G, J) |
+| HARVEST | ✅ | EASA XML parser — Part 21 + CS-25 (836 nodes) + CS-ACNS (501 nodes) |
 | DATA | ✅ | PostgreSQL (Structured) + ChromaDB (Vector) |
-| KNOWLEDGE | ✅ | 500+ regulatory nodes (IR / AMC / GM / CS) |
-| EXPLORE UI | ✅ | React 3-panel: tree / article / neighbors |
+| KNOWLEDGE | ✅ | 5 495+ regulatory nodes (IR / AMC / GM / CS), 2 600+ edges |
+| EXPLORE UI | ✅ | React 3-panel: tree (Subpart → Section → Article) / article / neighbors |
 | ASK UI | ✅ | RAG-based AI assistant with anti-hallucination safeguards |
 | ADMIN | ✅ | Admin Console for system health, stats, and harvester control |
 

@@ -25,6 +25,7 @@ def _to_summary(row: RegulatoryNode) -> NodeSummary:
         reference_code=row.reference_code,
         title=row.title,
         hierarchy_path=row.hierarchy_path,
+        regulatory_source=row.regulatory_source,
     )
 
 
@@ -55,7 +56,7 @@ async def list_nodes(
         description="Substring match on reference_code or title (case-insensitive).",
     ),
     hierarchy_prefix: str | None = None,
-    limit: int = Query(50, ge=1, le=500),
+    limit: int = Query(50, ge=1, le=10000),
     offset: int = Query(0, ge=0),
     session: AsyncSession = Depends(get_session),
 ) -> NodeListResponse:

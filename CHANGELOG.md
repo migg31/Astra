@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-04-12
+
+### Added
+- **Multi-Source Harvester**: Support for multiple EASA regulatory packages — CS-25 (Large Aeroplanes) and CS-ACNS (Communications, Navigation & Surveillance) fully ingested.
+- **Versioning Foundation**: Added `version_label` to document tracking and automated version extraction (Revision/Issue/Amendment) from EASA XML sources.
+- **Dynamic Source Selection**: Interactive source selector in the Admin Console to trigger specific regulatory updates.
+- **Two-Level Explorer Tree**: `Subpart → Section → Article` hierarchy for CS-ACNS; CS-25 remains `Subpart → Article`. Sections are collapsible sub-headers.
+- **Collapsed-by-default Tree**: Explorer tree resets to fully collapsed state on each document selection.
+
+### Fixed
+- **CS-25 AMC reference codes**: `TITLE_RE` prefix regex `AMC\s*\d*` was absorbing leading digits of article codes (e.g. `AMC 25.1301` parsed as prefix `AMC 2` + code `5.1301`). Fixed to `AMC\d*` (no space before digit).
+- **Variant extraction false positives**: `_build_reference_code` incorrectly treated the article number as a variant number (e.g. `AMC 25` → variant `25`). Fixed lookahead to require the digit be followed by a space/end, not a dot.
+- **CS-ACNS subpart hierarchy**: `_heading_level` had `SECTION < SUBPART` ordering inverted — Sections (level 2) were overwriting Subpart context in the heading stack. Swapped to `SUBPART=2, SECTION=3` so hierarchy paths now correctly include `Subpart B / Section 1 / …`.
+- **AMC→CS edge building**: Edge resolution was calling `re.search(ARTICLE_CODE_PATTERN, reference_code)` on the full reference code, matching the `AMC` prefix token instead of the article code. Now strips the type prefix first and falls back to stripping sub-paragraph refs `(a)(2)` to find the parent article.
+- **Explorer node truncation**: `listAllNodes()` used `limit=5000` while the DB had grown to 5 495 nodes — subparts E–J of CS-25 were silently dropped. Limit raised to `10 000`.
+
+### Improved
+- **Generic Ingestion Pipeline**: Refactored `easa_fetcher` and `ingest` logic to handle any "Easy Access Rules" XML package.
+- **Data Granularity**: Separate storage paths for raw data, organized by source and fetch date.
+- **CS-25 edges**: 2 293 edges inserted (up from 2 286 before the AMC reference-code fix).
+- **CS-ACNS edges**: 311 edges inserted (up from 56 before the edge-building fix).
+- **`buildTree` in `tree.ts`**: Refactored into `Subpart → Section → Article` with helper functions `sortArticles` / `sortNodes`; `SubpartGroup` now carries both `sections[]` and a flat `articles[]` for search and leaf counts.
+
 ## [0.2.0] - 2026-04-11
 
 ### Added

@@ -1,6 +1,9 @@
-import { useEffect, useState } from "react";
-import { getHarvesterStatus, getHealth, getStats, getSystemConfig, startHarvester } from "../api";
-import type { HealthStatus, IngestionStatus, SystemConfig, SystemStats } from "../types";
+import React, { useEffect, useState } from "react";
+import {
+  createSource, deleteSource, getHarvesterStatus, getHealth, getStats,
+  getSystemConfig, listHarvesterSources, listSources, startHarvester, updateSource,
+} from "../api";
+import type { HealthStatus, IngestionStatus, RegulatorySource, SystemConfig, SystemStats } from "../types";
 
 interface AdminConsoleProps {
   isOpen: boolean;
@@ -10,23 +13,33 @@ interface AdminConsoleProps {
 export function AdminConsole({ isOpen, onClose }: AdminConsoleProps) {
   const [stats, setStats] = useState<SystemStats | null>(null);
   const [health, setHealth] = useState<HealthStatus | null>(null);
-  const [config, setConfig] = useState<SystemConfig | null>(null);
+  const [_config, setConfig] = useState<SystemConfig | null>(null);
   const [harvester, setHarvester] = useState<IngestionStatus | null>(null);
+  const [sources, setSources] = useState<{ id: string; name: string; external_id: string; enabled: boolean }[]>([]);
+  const [selectedSource, setSelectedSource] = useState("part21");
   const [error, setError] = useState<string | null>(null);
-  const [isConfigExpanded, setIsConfigExpanded] = useState(false);
+  const [isSourcesExpanded, setIsSourcesExpanded] = useState(false);
+  const [regulatorySources, setRegulatorySources] = useState<RegulatorySource[]>([]);
+  const [editingSource, setEditingSource] = useState<RegulatorySource | null>(null);
+  const [addingSource, setAddingSource] = useState(false);
+  const [newSource, setNewSource] = useState({ name: "", base_url: "", external_id: "", format: "MIXED", frequency: "monthly", enabled: true });
 
   const refreshData = async () => {
     try {
-      const [s, h, i, c] = await Promise.all([
+      const [s, h, i, c, src, regSrc] = await Promise.all([
         getStats(),
         getHealth(),
         getHarvesterStatus(),
         getSystemConfig(),
+        listHarvesterSources(),
+        listSources(),
       ]);
       setStats(s);
       setHealth(h);
       setHarvester(i);
       setConfig(c);
+      setSources(src);
+      setRegulatorySources(regSrc);
       setError(null);
     } catch (err: any) {
       setError(err.message);
@@ -43,10 +56,54 @@ export function AdminConsole({ isOpen, onClose }: AdminConsoleProps) {
 
   const handleRunHarvester = async () => {
     try {
-      await startHarvester();
+      await startHarvester(selectedSource);
       refreshData();
     } catch (err: any) {
       setError("Failed to start harvester: " + err.message);
+    }
+  };
+
+  const handleToggleEnabled = async (src: RegulatorySource) => {
+    try {
+      await updateSource(src.source_id, { enabled: !src.enabled });
+      await refreshData();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingSource) return;
+    try {
+      await updateSource(editingSource.source_id, {
+        name: editingSource.name,
+        base_url: editingSource.base_url,
+      });
+      setEditingSource(null);
+      await refreshData();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  const handleDelete = async (src: RegulatorySource) => {
+    if (!confirm(`Delete "${src.name}"?`)) return;
+    try {
+      await deleteSource(src.source_id);
+      await refreshData();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  const handleAddSource = async () => {
+    try {
+      await createSource(newSource);
+      setAddingSource(false);
+      setNewSource({ name: "", base_url: "", external_id: "", format: "MIXED", frequency: "monthly", enabled: true });
+      await refreshData();
+    } catch (err: any) {
+      setError(err.message);
     }
   };
 
@@ -94,23 +151,115 @@ export function AdminConsole({ isOpen, onClose }: AdminConsoleProps) {
           </section>
 
           <section className="admin-section">
-            <h3 
-              onClick={() => setIsConfigExpanded(!isConfigExpanded)} 
+            <h3
+              onClick={() => setIsSourcesExpanded(!isSourcesExpanded)}
               style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', userSelect: 'none' }}
             >
-              <span style={{ 
-                fontSize: '0.6rem', 
-                transition: 'transform 0.2s', 
-                transform: isConfigExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
-                display: 'inline-block',
-                width: '10px'
+              <span style={{
+                fontSize: '0.6rem', transition: 'transform 0.2s',
+                transform: isSourcesExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                display: 'inline-block', width: '10px'
               }}>▶</span>
               Regulatory Sources
+              <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: '#6b7280', fontWeight: 400 }}>
+                {regulatorySources.filter(s => s.enabled).length}/{regulatorySources.length} active
+              </span>
             </h3>
-            {isConfigExpanded && (
-              <div className="config-grid" style={{ marginTop: '0.5rem', paddingLeft: '1rem' }}>
-                <ConfigItem label="Source Name" value={config?.harvester_name} />
-                <ConfigItem label="Download URL" value={config?.harvester_source_url} isUrl />
+
+            {isSourcesExpanded && (
+              <div style={{ marginTop: '0.5rem' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.72rem' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid #e5e7eb', color: '#6b7280' }}>
+                      <th style={{ textAlign: 'left', padding: '0.3rem 0.4rem', fontWeight: 600 }}>Name</th>
+                      <th style={{ textAlign: 'left', padding: '0.3rem 0.4rem', fontWeight: 600 }}>URL</th>
+                      <th style={{ textAlign: 'center', padding: '0.3rem 0.4rem', fontWeight: 600 }}>Active</th>
+                      <th style={{ textAlign: 'right', padding: '0.3rem 0.4rem', fontWeight: 600 }}>Last sync</th>
+                      <th style={{ padding: '0.3rem 0.4rem' }}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {regulatorySources.map(src => (
+                      <tr key={src.source_id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                        {editingSource?.source_id === src.source_id ? (
+                          <>
+                            <td style={{ padding: '0.3rem 0.4rem' }}>
+                              <input
+                                value={editingSource.name}
+                                onChange={e => setEditingSource({ ...editingSource, name: e.target.value })}
+                                style={{ width: '100%', fontSize: '0.72rem', padding: '0.15rem 0.3rem', border: '1px solid #d1d5db', borderRadius: 4 }}
+                              />
+                            </td>
+                            <td style={{ padding: '0.3rem 0.4rem' }}>
+                              <input
+                                value={editingSource.base_url}
+                                onChange={e => setEditingSource({ ...editingSource, base_url: e.target.value })}
+                                style={{ width: '100%', fontSize: '0.72rem', padding: '0.15rem 0.3rem', border: '1px solid #d1d5db', borderRadius: 4 }}
+                              />
+                            </td>
+                            <td colSpan={2} />
+                            <td style={{ padding: '0.3rem 0.4rem', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                              <button onClick={handleSaveEdit} style={btnStyle('#16CC7F')}>Save</button>
+                              <button onClick={() => setEditingSource(null)} style={{ ...btnStyle('#6b7280'), marginLeft: 4 }}>Cancel</button>
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td style={{ padding: '0.3rem 0.4rem', color: src.enabled ? '#111827' : '#9ca3af' }}>{src.name}</td>
+                            <td style={{ padding: '0.3rem 0.4rem', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              <a href={src.base_url} target="_blank" rel="noreferrer" style={{ color: '#007FC2', textDecoration: 'none' }} title={src.base_url}>
+                                {src.external_id ?? src.base_url}
+                              </a>
+                            </td>
+                            <td style={{ padding: '0.3rem 0.4rem', textAlign: 'center' }}>
+                              <button
+                                onClick={() => handleToggleEnabled(src)}
+                                style={{
+                                  background: src.enabled ? '#16CC7F' : '#e5e7eb',
+                                  border: 'none', borderRadius: 10, width: 32, height: 16,
+                                  cursor: 'pointer', position: 'relative', transition: 'background 0.2s'
+                                }}
+                                title={src.enabled ? 'Enabled — click to disable' : 'Disabled — click to enable'}
+                              >
+                                <span style={{
+                                  position: 'absolute', top: 2, left: src.enabled ? 18 : 2,
+                                  width: 12, height: 12, borderRadius: '50%', background: '#fff',
+                                  transition: 'left 0.2s'
+                                }} />
+                              </button>
+                            </td>
+                            <td style={{ padding: '0.3rem 0.4rem', textAlign: 'right', color: '#9ca3af', whiteSpace: 'nowrap' }}>
+                              {src.last_sync_at ? new Date(src.last_sync_at).toLocaleDateString() : '—'}
+                            </td>
+                            <td style={{ padding: '0.3rem 0.4rem', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                              <button onClick={() => setEditingSource(src)} style={btnStyle('#6b7280')} title="Edit">✎</button>
+                              <button onClick={() => handleDelete(src)} style={{ ...btnStyle('#ef4444'), marginLeft: 4 }} title="Delete">✕</button>
+                            </td>
+                          </>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                {addingSource ? (
+                  <div style={{ marginTop: '0.75rem', padding: '0.5rem', background: '#f9fafb', borderRadius: 6, fontSize: '0.72rem' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem', marginBottom: '0.4rem' }}>
+                      <input placeholder="Name" value={newSource.name} onChange={e => setNewSource({ ...newSource, name: e.target.value })} style={inputStyle} />
+                      <input placeholder="external_id (e.g. easa-cs23)" value={newSource.external_id} onChange={e => setNewSource({ ...newSource, external_id: e.target.value })} style={inputStyle} />
+                      <input placeholder="Download URL" value={newSource.base_url} onChange={e => setNewSource({ ...newSource, base_url: e.target.value })} style={{ ...inputStyle, gridColumn: 'span 2' }} />
+                    </div>
+                    <button onClick={handleAddSource} style={btnStyle('#222F64')}>Add</button>
+                    <button onClick={() => setAddingSource(false)} style={{ ...btnStyle('#6b7280'), marginLeft: 4 }}>Cancel</button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setAddingSource(true)}
+                    style={{ marginTop: '0.5rem', fontSize: '0.72rem', color: '#007FC2', background: 'none', border: 'none', cursor: 'pointer', padding: '0.2rem 0' }}
+                  >
+                    + Add source
+                  </button>
+                )}
               </div>
             )}
           </section>
@@ -118,6 +267,31 @@ export function AdminConsole({ isOpen, onClose }: AdminConsoleProps) {
           <section className="admin-section">
             <h3>Knowledge Harvester</h3>
             <div className="harvester-card">
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 600, color: '#6b7280', marginBottom: '0.25rem' }}>
+                  Select Regulatory Source
+                </label>
+                <select 
+                  value={selectedSource}
+                  onChange={(e) => setSelectedSource(e.target.value)}
+                  disabled={harvester?.is_running}
+                  style={{
+                    width: '100%',
+                    padding: '0.4rem',
+                    borderRadius: '6px',
+                    border: '1px solid #e5e7eb',
+                    fontSize: '0.75rem',
+                    background: '#fff',
+                    color: '#222F64',
+                    outline: 'none'
+                  }}
+                >
+                  {sources.map(s => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+
               <div className="harvester-status">
                 <strong>Status:</strong>{" "}
                 {harvester?.is_running ? (
@@ -240,13 +414,13 @@ function StatCard({ label, value, icon }: { label: string; value?: string | numb
   );
 }
 
-function ConfigItem({ label, value, isUrl }: { label: string; value?: string; isUrl?: boolean }) {
-  return (
-    <div className="config-item">
-      <span className="config-label">{label}</span>
-      <span className="config-value" title={value}>
-        {isUrl ? <a href={value} target="_blank" rel="noreferrer">{value}</a> : value ?? "-"}
-      </span>
-    </div>
-  );
-}
+const btnStyle = (color: string): React.CSSProperties => ({
+  fontSize: '0.68rem', padding: '0.15rem 0.4rem', border: `1px solid ${color}`,
+  borderRadius: 4, background: 'none', color, cursor: 'pointer',
+});
+
+const inputStyle: React.CSSProperties = {
+  fontSize: '0.72rem', padding: '0.2rem 0.4rem',
+  border: '1px solid #d1d5db', borderRadius: 4, width: '100%',
+};
+

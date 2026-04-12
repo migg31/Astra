@@ -16,16 +16,55 @@ import psycopg2
 from psycopg2.extras import execute_values
 
 from backend.config import settings
-from backend.harvest.easa_fetcher import PART21_XML_ZIP_URL, fetch_part21_xml
+from backend.harvest.easa_fetcher import fetch_easa_xml, fetch_part21_xml, PART21_XML_ZIP_URL
 from backend.harvest.easa_parser import parse_easa_xml
 from backend.harvest.models import ParseResult
 
-SOURCE_NAME = "EASA Easy Access Rules — Part 21"
-SOURCE_FORMAT = "MIXED"        # the file is XML but packaged inside a zip/docx
+# Catalog of available EASA sources
+REGULATORY_SOURCES = {
+    "part21": {
+        "name": "EASA Part 21",
+        "url": "https://www.easa.europa.eu/en/downloads/136660/en",
+        "external_id": "easa-part21",
+    },
+    "continuing-airworthiness": {
+        "name": "Continuing Airworthiness (M, 145, 66)",
+        "url": "https://www.easa.europa.eu/en/downloads/136681/en",
+        "external_id": "easa-airworthiness",
+    },
+    "air-operations": {
+        "name": "Air Operations (ORO, CAT)",
+        "url": "https://www.easa.europa.eu/en/downloads/136682/en",
+        "external_id": "easa-ops",
+    },
+    "aircrew": {
+        "name": "Aircrew (FCL, MED)",
+        "url": "https://www.easa.europa.eu/en/downloads/136654/en",
+        "external_id": "easa-aircrew",
+    },
+    "cs-25": {
+        "name": "CS-25 — Large Aeroplanes",
+        "url": "https://www.easa.europa.eu/en/downloads/136662/en",
+        "external_id": "easa-cs25",
+    },
+    "cs-acns": {
+        "name": "CS-ACNS — Airborne Communications, Navigation and Surveillance",
+        "url": "https://www.easa.europa.eu/en/downloads/136674/en",
+        "external_id": "easa-csacns",
+    },
+    "cs-awo": {
+        "name": "CS-AWO — All Weather Operations",
+        "url": "https://www.easa.europa.eu/en/downloads/136677/en",
+        "external_id": "easa-csawo",
+    }
+    }
+
+
+SOURCE_FORMAT = "MIXED"
 SOURCE_FREQUENCY = "monthly"
 
 
-def upsert_source(cur) -> str:
+def upsert_source(cur, name: str, url: str) -> str:
     cur.execute(
         """
         INSERT INTO harvest_sources (name, base_url, format, frequency, last_sync_at)
@@ -37,7 +76,7 @@ def upsert_source(cur) -> str:
                 last_sync_at = NOW()
         RETURNING source_id
         """,
-        (SOURCE_NAME, PART21_XML_ZIP_URL, SOURCE_FORMAT, SOURCE_FREQUENCY),
+        (name, url, SOURCE_FORMAT, SOURCE_FREQUENCY),
     )
     return cur.fetchone()[0]
 
@@ -50,21 +89,23 @@ def upsert_document(
     url: str,
     content_hash: str,
     raw_path: str,
+    version_label: str | None = None,
 ) -> str:
     cur.execute(
         """
         INSERT INTO harvest_documents
-            (source_id, external_id, title, url, content_hash, raw_path)
-        VALUES (%s, %s, %s, %s, %s, %s)
+            (source_id, external_id, title, url, content_hash, raw_path, version_label)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (source_id, external_id) DO UPDATE
-            SET title        = EXCLUDED.title,
-                url          = EXCLUDED.url,
-                content_hash = EXCLUDED.content_hash,
-                raw_path     = EXCLUDED.raw_path,
-                fetched_at   = NOW()
+            SET title         = EXCLUDED.title,
+                url           = EXCLUDED.url,
+                content_hash  = EXCLUDED.content_hash,
+                raw_path      = EXCLUDED.raw_path,
+                version_label = EXCLUDED.version_label,
+                fetched_at    = NOW()
         RETURNING doc_id
         """,
-        (source_id, external_id, title, url, content_hash, raw_path),
+        (source_id, external_id, title, url, content_hash, raw_path, version_label),
     )
     return cur.fetchone()[0]
 
@@ -127,7 +168,7 @@ def upsert_edges(cur, node_map: dict[tuple[str, str], str], result: ParseResult)
             if nid:
                 source_id = nid
                 break
-        target_id = node_map.get(("IR", edge.target_ref))
+        target_id = node_map.get(("IR", edge.target_ref)) or node_map.get(("CS", edge.target_ref))
         if not source_id or not target_id or source_id == target_id:
             continue
         rows.append((source_id, target_id, edge.relation, edge.confidence, edge.notes))
@@ -149,15 +190,14 @@ def upsert_edges(cur, node_map: dict[tuple[str, str], str], result: ParseResult)
     return len(rows)
 
 
-def ingest(xml_path: Path, *, source_url: str, content_hash: str) -> dict:
+def ingest(xml_path: Path, *, source_name: str, source_url: str, external_id: str, content_hash: str) -> dict:
     result = parse_easa_xml(xml_path)
 
-    external_id = "easa-part21-748-2012"
-    title = result.source_document_title or "EASA Part 21"
+    title = result.source_document_title or source_name
 
     with psycopg2.connect(settings.database_url_sync) as conn:
         with conn.cursor() as cur:
-            source_id = upsert_source(cur)
+            source_id = upsert_source(cur, source_name, source_url)
             doc_id = upsert_document(
                 cur,
                 source_id=source_id,
@@ -166,12 +206,14 @@ def ingest(xml_path: Path, *, source_url: str, content_hash: str) -> dict:
                 url=source_url,
                 content_hash=content_hash,
                 raw_path=str(xml_path.resolve()),
+                version_label=result.source_version,
             )
             node_map = upsert_nodes(cur, doc_id, result)
             edges_inserted = upsert_edges(cur, node_map, result)
         conn.commit()
 
     return {
+        "source_name": source_name,
         "source_id": source_id,
         "doc_id": doc_id,
         "nodes": len(result.nodes),
@@ -182,7 +224,13 @@ def ingest(xml_path: Path, *, source_url: str, content_hash: str) -> dict:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Ingest EASA Part 21 into Postgres")
+    parser = argparse.ArgumentParser(description="Ingest EASA Rules into Postgres")
+    parser.add_argument(
+        "--source",
+        choices=list(REGULATORY_SOURCES.keys()),
+        default="part21",
+        help="Regulatory source to ingest (default: part21)",
+    )
     parser.add_argument(
         "--offline",
         type=Path,
@@ -196,21 +244,29 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    source_cfg = REGULATORY_SOURCES[args.source]
+
     if args.offline:
         xml_path = args.offline.resolve()
         content_hash = _quick_hash(xml_path)
-        source_url = PART21_XML_ZIP_URL
+        source_url = source_cfg["url"]
         print(f"[offline] using {xml_path}")
     else:
-        print("[fetch] downloading EASA Part 21 XML ...")
-        fetched = fetch_part21_xml(args.data_dir)
+        print(f"[fetch] downloading {source_cfg['name']} ...")
+        fetched = fetch_easa_xml(args.data_dir, source_cfg["url"], source_cfg["external_id"])
         xml_path = fetched.path
         content_hash = fetched.content_hash
         source_url = fetched.url
         print(f"[fetch] saved to {xml_path} ({content_hash[:8]})")
 
     print("[parse+persist] running ...")
-    report = ingest(xml_path, source_url=source_url, content_hash=content_hash)
+    report = ingest(
+        xml_path, 
+        source_name=source_cfg["name"],
+        source_url=source_url, 
+        external_id=source_cfg["external_id"],
+        content_hash=content_hash
+    )
     print(f"[done] {report}")
     return 0
 

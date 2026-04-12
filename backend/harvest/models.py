@@ -35,4 +35,5 @@ class ParseResult:
     edges: list[ParsedEdge] = field(default_factory=list)
     source_document_hash: str = ""
     source_document_title: str = ""
+    source_version: str | None = None
     source_pub_time: datetime | None = None

@@ -12,7 +12,7 @@ class Base(DeclarativeBase):
 
 
 node_type_enum = ENUM(
-    "IR", "AMC", "GM", "CS",
+    "IR", "AMC", "GM", "CS", "GROUP",
     name="node_type",
     create_type=False,
 )
@@ -20,6 +20,7 @@ node_type_enum = ENUM(
 edge_type_enum = ENUM(
     "IMPLEMENTS", "ACCEPTABLE_MEANS", "GUIDANCE_FOR", "REFERENCES",
     "REQUIRES", "EQUIVALENT_TO", "SUPERSEDES", "IF_MINOR", "IF_MAJOR", "LEADS_TO",
+    "CONTAINS",
     name="edge_type",
     create_type=False,
 )

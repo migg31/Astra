@@ -43,7 +43,18 @@
       "Bash(powershell:*)",
       "Bash(ollama pull:*)",
       "Bash(curl:*)",
-      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); [print\\(m['name']\\) for m in d.get\\('models',[]\\)]\")"
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); [print\\(m['name']\\) for m in d.get\\('models',[]\\)]\")",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(uv run:*)",
+      "Bash(.venv/Scripts/python -c \"from backend.api.routes.graph import router; print\\('OK'\\)\")",
+      "Bash(.venv/Scripts/python -c ':*)",
+      "Bash(npx --no-install tsc --noEmit --pretty false)",
+      "Bash(node node_modules/typescript/bin/tsc --noEmit --pretty false)",
+      "Bash(./node_modules/.bin/tsc --version)",
+      "Bash(./node_modules/.bin/tsc --noEmit --pretty false)",
+      "Bash(./node_modules/.bin/tsc --noEmit)",
+      "Bash(cat vite.config.ts)",
+      "Bash(cat vite.config.js)"
     ]
   }
 }

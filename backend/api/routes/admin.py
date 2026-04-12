@@ -10,15 +10,13 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.api.schemas import RegulatorySourceCreate, RegulatorySourceOut, RegulatorySourceUpdate
 from backend.database.connection import get_session
 from backend.rag.store import count as count_embeddings, _CHROMA_PATH
 from backend.harvest.ingest import (
-    ingest, 
-    fetch_part21_xml, 
-    PART21_XML_ZIP_URL, 
-    SOURCE_NAME, 
-    SOURCE_FREQUENCY, 
-    SOURCE_FORMAT
+    ingest,
+    fetch_easa_xml,
+    REGULATORY_SOURCES,
 )
 from backend.rag.ingest_embeddings import main as run_embedding_pipeline
 from backend.rag.embedder import _get_client as get_ollama_client, EMBED_MODEL
@@ -140,12 +138,14 @@ async def get_config():
     from backend.config import settings
     
     db_url = urlparse(settings.database_url)
+    # Use part21 as the default reference for config display
+    default_source = REGULATORY_SOURCES["part21"]
     
     return SystemConfig(
-        harvester_source_url=PART21_XML_ZIP_URL,
-        harvester_name=SOURCE_NAME,
-        harvester_frequency=SOURCE_FREQUENCY,
-        harvester_format=SOURCE_FORMAT,
+        harvester_source_url=default_source["url"],
+        harvester_name=default_source["name"],
+        harvester_frequency="monthly",
+        harvester_format="MIXED",
         data_directory=str(Path("data").resolve()),
         db_host=db_url.hostname or "localhost",
         ollama_base_url=OLLAMA_BASE_URL
@@ -156,33 +156,34 @@ async def get_harvester_status():
     """Get the current state of the ingestion process."""
     return _status
 
-async def _run_harvester_task():
-    """Background task to run the full ingestion and embedding pipeline."""
+async def _run_harvester_task_cfg(source_cfg: dict):
+    """Background task: fetch → parse → persist → embed for a given source config dict."""
     global _status
     async with _lock:
         _status.is_running = True
         _status.error = None
         try:
-            # 1. Fetch & Ingest into Postgres
-            # We use a temporary directory for downloads
             data_dir = Path("data")
-            data_dir.mkdir(parents=True, exist_ok=True)
-            
-            # Fetch
-            fetched = fetch_part21_xml(data_dir)
-            
-            # Ingest (sync call, but in thread pool via run_in_executor if needed)
-            # For now, we run it directly in the background task (which is already a thread for sync def)
-            # but since this is an 'async def' task, we should use run_in_executor for sync blocks.
+
+            # 1. Fetch
+            fetched = fetch_easa_xml(data_dir, source_cfg["url"], source_cfg["external_id"])
+
+            # 2. Ingest into Postgres
             loop = asyncio.get_running_loop()
             report = await loop.run_in_executor(
-                None, 
-                lambda: ingest(fetched.path, source_url=fetched.url, content_hash=fetched.content_hash)
+                None,
+                lambda: ingest(
+                    fetched.path,
+                    source_name=source_cfg["name"],
+                    source_url=fetched.url,
+                    external_id=fetched.external_id,
+                    content_hash=fetched.content_hash,
+                ),
             )
-            
-            # 2. Run Embedding Pipeline
+
+            # 3. Re-index vectors
             await loop.run_in_executor(None, run_embedding_pipeline)
-            
+
             _status.last_report = report
             _status.last_run_at = datetime.now(timezone.utc)
         except Exception as e:
@@ -190,11 +191,124 @@ async def _run_harvester_task():
         finally:
             _status.is_running = False
 
+# ── Regulatory Sources CRUD ──────────────────────────────────────────────────
+
+@router.get("/sources", response_model=list[RegulatorySourceOut])
+async def list_sources(db: AsyncSession = Depends(get_session)):
+    """List all regulatory sources from the database."""
+    rows = await db.execute(
+        text("""
+            SELECT source_id, name, base_url, external_id, format, frequency, enabled, last_sync_at
+            FROM harvest_sources
+            ORDER BY name
+        """)
+    )
+    return [RegulatorySourceOut(**dict(r._mapping)) for r in rows]
+
+
+@router.post("/sources", response_model=RegulatorySourceOut, status_code=201)
+async def create_source(body: RegulatorySourceCreate, db: AsyncSession = Depends(get_session)):
+    """Add a new regulatory source."""
+    row = await db.execute(
+        text("""
+            INSERT INTO harvest_sources (name, base_url, external_id, format, frequency, enabled)
+            VALUES (:name, :base_url, :external_id, :format, :frequency, :enabled)
+            RETURNING source_id, name, base_url, external_id, format, frequency, enabled, last_sync_at
+        """),
+        body.model_dump(),
+    )
+    await db.commit()
+    return RegulatorySourceOut(**dict(row.fetchone()._mapping))
+
+
+@router.patch("/sources/{source_id}", response_model=RegulatorySourceOut)
+async def update_source(
+    source_id: str,
+    body: RegulatorySourceUpdate,
+    db: AsyncSession = Depends(get_session),
+):
+    """Update name, URL, or enabled flag of a source."""
+    updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    set_clause = ", ".join(f"{k} = :{k}" for k in updates)
+    updates["source_id"] = source_id
+    row = await db.execute(
+        text(f"""
+            UPDATE harvest_sources
+            SET {set_clause}
+            WHERE source_id = :source_id
+            RETURNING source_id, name, base_url, external_id, format, frequency, enabled, last_sync_at
+        """),
+        updates,
+    )
+    await db.commit()
+    result = row.fetchone()
+    if result is None:
+        raise HTTPException(status_code=404, detail="Source not found")
+    return RegulatorySourceOut(**dict(result._mapping))
+
+
+@router.delete("/sources/{source_id}", status_code=204)
+async def delete_source(source_id: str, db: AsyncSession = Depends(get_session)):
+    """Delete a source (only if it has no associated documents)."""
+    docs = await db.scalar(
+        text("SELECT COUNT(*) FROM harvest_documents WHERE source_id = :sid"),
+        {"sid": source_id},
+    )
+    if docs and docs > 0:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot delete: {docs} document(s) ingested from this source",
+        )
+    await db.execute(
+        text("DELETE FROM harvest_sources WHERE source_id = :sid"), {"sid": source_id}
+    )
+    await db.commit()
+
+
+# ── Harvester trigger ─────────────────────────────────────────────────────────
+
+@router.get("/harvester/sources")
+async def get_harvester_sources(db: AsyncSession = Depends(get_session)):
+    """List enabled regulatory sources for the harvester dropdown."""
+    rows = await db.execute(
+        text("""
+            SELECT source_id::text AS id, name, external_id, enabled
+            FROM harvest_sources
+            ORDER BY name
+        """)
+    )
+    return [dict(r._mapping) for r in rows]
+
+
 @router.post("/harvester/run")
-async def start_harvester(background_tasks: BackgroundTasks):
-    """Trigger the ingestion process in the background."""
+async def start_harvester(
+    background_tasks: BackgroundTasks,
+    source: str = "part21",
+    db: AsyncSession = Depends(get_session),
+):
+    """Trigger ingestion for a source identified by external_id."""
     if _status.is_running:
         raise HTTPException(status_code=400, detail="Harvester is already running")
-    
-    background_tasks.add_task(_run_harvester_task)
-    return {"message": "Harvester started"}
+
+    row = await db.execute(
+        text("""
+            SELECT name, base_url, external_id
+            FROM harvest_sources
+            WHERE external_id = :eid
+        """),
+        {"eid": source},
+    )
+    src = row.fetchone()
+    if src is None:
+        # Fallback to hardcoded dict for backward compatibility
+        if source not in REGULATORY_SOURCES:
+            raise HTTPException(status_code=404, detail=f"Source '{source}' not found")
+        src_cfg = REGULATORY_SOURCES[source]
+    else:
+        src_cfg = {"name": src.name, "url": src.base_url, "external_id": src.external_id}
+
+    background_tasks.add_task(_run_harvester_task_cfg, src_cfg)
+    return {"message": f"Harvester started for {src_cfg['name']}"}

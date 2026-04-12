@@ -1,11 +1,13 @@
 import type {
   AskRequest,
   AskResponse,
+  GraphData,
   HealthStatus,
   IngestionStatus,
   NeighborsResponse,
   NodeDetail,
   NodeListResponse,
+  RegulatorySource,
   SystemConfig,
   SystemStats,
 } from "./types";
@@ -21,7 +23,7 @@ async function fetchJSON<T>(path: string): Promise<T> {
 }
 
 export function listAllNodes(): Promise<NodeListResponse> {
-  return fetchJSON<NodeListResponse>("/api/nodes?limit=500");
+  return fetchJSON<NodeListResponse>("/api/nodes?limit=10000");
 }
 
 export function getNode(nodeId: string): Promise<NodeDetail> {
@@ -45,6 +47,10 @@ export async function askQuestion(req: AskRequest): Promise<AskResponse> {
   return res.json() as Promise<AskResponse>;
 }
 
+export function getGraph(): Promise<GraphData> {
+  return fetchJSON<GraphData>("/api/graph");
+}
+
 // Admin API
 export function getStats(): Promise<SystemStats> {
   return fetchJSON<SystemStats>("/api/admin/stats");
@@ -58,12 +64,58 @@ export function getHarvesterStatus(): Promise<IngestionStatus> {
   return fetchJSON<IngestionStatus>("/api/admin/harvester/status");
 }
 
+export function listHarvesterSources(): Promise<{ id: string; name: string; external_id: string; enabled: boolean }[]> {
+  return fetchJSON("/api/admin/harvester/sources");
+}
+
+// Regulatory Sources CRUD
+export function listSources(): Promise<RegulatorySource[]> {
+  return fetchJSON<RegulatorySource[]>("/api/admin/sources");
+}
+
+export async function createSource(body: Omit<RegulatorySource, "source_id" | "last_sync_at">): Promise<RegulatorySource> {
+  const res = await fetch(`${API_BASE}/api/admin/sources`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({}));
+    throw new Error((detail as { detail?: string }).detail ?? `${res.status}`);
+  }
+  return res.json();
+}
+
+export async function updateSource(
+  sourceId: string,
+  body: { name?: string; base_url?: string; enabled?: boolean }
+): Promise<RegulatorySource> {
+  const res = await fetch(`${API_BASE}/api/admin/sources/${sourceId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({}));
+    throw new Error((detail as { detail?: string }).detail ?? `${res.status}`);
+  }
+  return res.json();
+}
+
+export async function deleteSource(sourceId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/admin/sources/${sourceId}`, { method: "DELETE" });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({}));
+    throw new Error((detail as { detail?: string }).detail ?? `${res.status}`);
+  }
+}
+
 export function getSystemConfig(): Promise<SystemConfig> {
   return fetchJSON<SystemConfig>("/api/admin/config");
 }
 
-export async function startHarvester(): Promise<{ message: string }> {
-  const res = await fetch(`${API_BASE}/api/admin/harvester/run`, {
+export async function startHarvester(sourceId: string = "part21"): Promise<{ message: string }> {
+  const res = await fetch(`${API_BASE}/api/admin/harvester/run?source=${sourceId}`, {
     method: "POST",
   });
   if (!res.ok) {

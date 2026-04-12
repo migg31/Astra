@@ -1,4 +1,4 @@
-export type NodeType = "IR" | "AMC" | "GM" | "CS";
+export type NodeType = "IR" | "AMC" | "GM" | "CS" | "GROUP";
 
 export interface NodeSummary {
   node_id: string;
@@ -6,6 +6,7 @@ export interface NodeSummary {
   reference_code: string;
   title: string | null;
   hierarchy_path: string;
+  regulatory_source: string | null;
 }
 
 export interface NodeDetail extends NodeSummary {
@@ -61,6 +62,42 @@ export interface NeighborsResponse {
   incoming: EdgeOut[];
 }
 
+// --- Graph / MAP view types ---
+
+export interface GraphNode {
+  node_id: string;
+  node_type: NodeType;
+  reference_code: string;
+  title: string | null;
+  hierarchy_path: string;
+  // D3 simulation fields (mutated at runtime)
+  x?: number;
+  y?: number;
+  vx?: number;
+  vy?: number;
+  fx?: number | null;
+  fy?: number | null;
+}
+
+export interface GraphEdge {
+  edge_id: string;
+  source_node_id: string;
+  target_node_id: string;
+  relation: string;
+  confidence: number;
+}
+
+export interface GraphData {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+}
+
+export interface DocumentInfo {
+  source: string;    // regulatory_source value — used as unique ID
+  label: string;     // short display name, e.g. "Part 21"
+  nodeCount: number;
+}
+
 export interface SystemStats {
   nodes_count: number;
   edges_count: number;
@@ -93,4 +130,15 @@ export interface SystemConfig {
   data_directory: string;
   db_host: string;
   ollama_base_url: string;
+}
+
+export interface RegulatorySource {
+  source_id: string;
+  name: string;
+  base_url: string;
+  external_id: string | null;
+  format: string;
+  frequency: string;
+  enabled: boolean;
+  last_sync_at: string | null;
 }

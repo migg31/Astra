@@ -4,7 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-NodeTypeLiteral = Literal["IR", "AMC", "GM", "CS"]
+NodeTypeLiteral = Literal["IR", "AMC", "GM", "CS", "GROUP"]
 
 
 class NodeSummary(BaseModel):
@@ -13,6 +13,7 @@ class NodeSummary(BaseModel):
     reference_code: str
     title: str | None = None
     hierarchy_path: str
+    regulatory_source: str | None = None
 
 
 class NodeDetail(NodeSummary):
@@ -55,3 +56,54 @@ class NeighborsResponse(BaseModel):
         default_factory=list,
         description="Edges where the queried node is the target.",
     )
+
+
+# --- Graph endpoint schemas ---
+
+class GraphNode(BaseModel):
+    node_id: str
+    node_type: NodeTypeLiteral
+    reference_code: str
+    title: str | None = None
+    hierarchy_path: str
+
+
+class GraphEdge(BaseModel):
+    edge_id: str
+    source_node_id: str
+    target_node_id: str
+    relation: str
+    confidence: float
+
+
+class GraphResponse(BaseModel):
+    nodes: list[GraphNode]
+    edges: list[GraphEdge]
+
+
+# --- Regulatory Sources ---
+
+class RegulatorySourceOut(BaseModel):
+    source_id: UUID
+    name: str
+    base_url: str
+    external_id: str | None
+    format: str
+    frequency: str
+    enabled: bool
+    last_sync_at: datetime | None
+
+
+class RegulatorySourceCreate(BaseModel):
+    name: str
+    base_url: str
+    external_id: str
+    format: str = "MIXED"
+    frequency: str = "monthly"
+    enabled: bool = True
+
+
+class RegulatorySourceUpdate(BaseModel):
+    name: str | None = None
+    base_url: str | None = None
+    enabled: bool | None = None
