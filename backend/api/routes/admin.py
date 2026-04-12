@@ -402,10 +402,19 @@ async def get_catalog(db: AsyncSession = Depends(get_session)):
             hd.pub_date,
             hd.amended_by,
             COUNT(rn.node_id) AS node_count,
-            MIN(SPLIT_PART(rn.hierarchy_path, ' / ', 1)) AS first_root
+            (
+                SELECT SPLIT_PART(rn2.hierarchy_path, ' / ', 1)
+                FROM regulatory_nodes rn2
+                WHERE rn2.source_doc_id = hd.doc_id
+                  AND rn2.hierarchy_path IS NOT NULL
+                  AND rn2.hierarchy_path != ''
+                GROUP BY SPLIT_PART(rn2.hierarchy_path, ' / ', 1)
+                ORDER BY COUNT(*) DESC
+                LIMIT 1
+            ) AS first_root
         FROM harvest_documents hd
         LEFT JOIN regulatory_nodes rn ON rn.source_doc_id = hd.doc_id
-        GROUP BY hd.title, hd.version_label, hd.pub_date, hd.amended_by
+        GROUP BY hd.doc_id, hd.title, hd.version_label, hd.pub_date, hd.amended_by
     """))
 
     # All indexed documents as list of dicts (preserve original title for frontend matching)

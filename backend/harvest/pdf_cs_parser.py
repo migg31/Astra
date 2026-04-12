@@ -153,12 +153,17 @@ def parse_cs_pdf(pdf_path: Path, *, regulatory_source: str | None = None) -> Par
     first_page_text = doc[0].get_text()
     version_label = _extract_version_label(first_page_text)
 
+    # Build document title prefix — used as root of hierarchy_path so the frontend
+    # can identify this document as a browsable source (matches catalog source_root)
+    source_prefix = regulatory_source.split(" ")[0] if regulatory_source else "CS"
+    doc_title = f"{source_prefix} {version_label}".strip() if version_label else (regulatory_source or "CS Document")
+
     nodes: list[ParsedNode] = []
 
     current_heading: str | None = None
     current_type: str | None = None
     current_body_parts: list[str] = []
-    current_hierarchy: str = ""
+    current_hierarchy: str = doc_title  # default: just the doc title as root
     legacy_mode: bool = False  # True when current article was detected by pattern (small fonts)
 
     def _flush() -> None:
@@ -212,7 +217,7 @@ def parse_cs_pdf(pdf_path: Path, *, regulatory_source: str | None = None) -> Par
                 current_heading = None
                 current_type = None
                 current_body_parts = []
-                current_hierarchy = text.replace("\n", " ").strip()
+                current_hierarchy = doc_title + " / " + text.replace("\n", " ").strip()
                 legacy_mode = False
                 continue
 
@@ -243,7 +248,7 @@ def parse_cs_pdf(pdf_path: Path, *, regulatory_source: str | None = None) -> Par
         nodes=nodes,
         edges=[],
         source_document_hash="",
-        source_document_title=f"{regulatory_source.split(' ')[0]} {version_label}".strip() if version_label else regulatory_source,
+        source_document_title=doc_title,
         source_version=version_label,
         source_pub_time=None,
     )
