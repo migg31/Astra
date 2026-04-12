@@ -111,41 +111,63 @@ function sortNodes(ns: NodeSummary[]): void {
  * Documents without sections (e.g. CS-25) produce a single unnamed section per subpart.
  * Expects nodes pre-filtered by document source and active types.
  */
+/** Canonical label map: normalizedKey -> preferred display label */
+function canonicalLabel(
+  labelMap: Map<string, string>,
+  raw: string
+): string {
+  const key = raw.toUpperCase().replace(/\s+/g, " ").trim();
+  if (!labelMap.has(key)) {
+    labelMap.set(key, raw);
+  } else {
+    // Prefer the ALL-CAPS version (PDF source, more authoritative)
+    const existing = labelMap.get(key)!;
+    if (raw === raw.toUpperCase() && existing !== raw) {
+      labelMap.set(key, raw);
+    }
+  }
+  return key;
+}
+
 export function buildTree(nodes: NodeSummary[]): SubpartGroup[] {
-  // bySubpart > bySection > byArticle
+  // bySubpart > bySection > byArticle — keyed by normalized uppercase
   const bySubpart = new Map<string, Map<string, Map<string, NodeSummary[]>>>();
+  const subpartLabels = new Map<string, string>();
+  const sectionLabels = new Map<string, string>();
 
   for (const node of nodes) {
     if (node.node_type === "GROUP") continue;
     const parts = node.hierarchy_path.split(" / ");
 
-    // Find the subpart segment (SUBPART X or Subpart X) — search all segments except last
-    // For PDF nodes with 2 levels (doc / subpart), subpart is at index 1 (last structural segment)
     const structuralParts = parts.length > 1 ? parts.slice(1) : parts;
     const explicitSubpart = structuralParts.find((p) => /^\(?SUBPART/i.test(p));
     // If no explicit SUBPART, use the first structural segment (e.g. CS-ACNS "SECTION 1 – PBN")
-    const subpart = explicitSubpart ?? (structuralParts.length > 0 ? structuralParts[0] : "Other");
-    // Find the section segment (Section N or SECTION N) — only when subpart is explicit
-    const section = explicitSubpart
+    const subpartRaw = explicitSubpart ?? (structuralParts.length > 0 ? structuralParts[0] : "Other");
+    // Find the section segment — only when subpart is explicit
+    const sectionRaw = explicitSubpart
       ? (structuralParts.find((p) => /^SECTION\s+\d/i.test(p)) ?? "")
       : (structuralParts.length > 1 ? structuralParts[1] : "");
 
+    const subpartKey = canonicalLabel(subpartLabels, subpartRaw);
+    const sectionKey = canonicalLabel(sectionLabels, sectionRaw);
     const art = articleCode(node);
 
-    if (!bySubpart.has(subpart)) bySubpart.set(subpart, new Map());
-    const bySec = bySubpart.get(subpart)!;
-    if (!bySec.has(section)) bySec.set(section, new Map());
-    const byArt = bySec.get(section)!;
+    if (!bySubpart.has(subpartKey)) bySubpart.set(subpartKey, new Map());
+    const bySec = bySubpart.get(subpartKey)!;
+    if (!bySec.has(sectionKey)) bySec.set(sectionKey, new Map());
+    const byArt = bySec.get(sectionKey)!;
     if (!byArt.has(art)) byArt.set(art, []);
     byArt.get(art)!.push(node);
   }
 
   const result: SubpartGroup[] = [];
 
-  for (const [subpartName, bySec] of bySubpart) {
+  for (const [subpartKey, bySec] of bySubpart) {
+    const subpartName = subpartLabels.get(subpartKey) ?? subpartKey;
     const sections: SectionGroup[] = [];
 
-    for (const [sectionName, byArt] of bySec) {
+    for (const [sectionKey, byArt] of bySec) {
+      const sectionName = sectionLabels.get(sectionKey) ?? sectionKey;
       const articleGroups: ArticleGroup[] = [];
       for (const [code, ns] of byArt) {
         sortNodes(ns);
