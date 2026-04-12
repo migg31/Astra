@@ -116,18 +116,24 @@ function sortNodes(ns: NodeSummary[]): void {
  * Ranges per EASA CS-25 table of contents.
  */
 function cs25Subpart(code: string): string {
+  // Appendix J (turbine engine) → Subpart E
+  if (/25J\d/i.test(code)) return "Subpart E — Powerplant";
+  // Appendix A / other lettered appendices
+  if (/25[A-IK-Z]\d/i.test(code)) return "Appendices";
+  // General AMC (AMC 25-N) and AMC No. / AMC to Appendix
+  if (/25-\d/.test(code) || /^AMC\s+(No|to\s+App)/i.test(code)) return "Appendices";
+
   const m = code.match(/25\.(\d+)/);
-  if (!m) return "Other";
+  if (!m) return "Appendices";
   const n = parseInt(m[1], 10);
   if (n <= 45)   return "Subpart A — General";
   if (n <= 253)  return "Subpart B — Flight";
   if (n <= 459)  return "Subpart C — Structure";
   if (n <= 843)  return "Subpart D — Design and Construction";
-  if (n <= 1203) return "Subpart E — Powerplant";
-  if (n <= 1465) return "Subpart F — Equipment";
-  if (n <= 1587) return "Subpart G — Operating Limitations and Information";
-  if (n <= 1799) return "Appendices";
-  return "Other";
+  if (n <= 1209) return "Subpart E — Powerplant";  // 1207 = last CS in Powerplant
+  if (n <= 1461) return "Subpart F — Equipment";   // 1460/1461 = last CS in Equipment
+  if (n <= 1592) return "Subpart G — Operating Limitations and Information";
+  return "Appendices";
 }
 
 /** Canonical label map: normalizedKey -> preferred display label */
