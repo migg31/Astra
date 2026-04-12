@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { CatalogEntry, VersionCheckResult } from "../api";
 import type { NodeDetail, NodeSummary, NodeType } from "../types";
-import { NodeHistoryPanel } from "./NodeHistoryPanel";
 import { typeOrder } from "../tree";
 
 interface Props {
@@ -169,10 +168,9 @@ function groupSiblingsByType(siblings: NodeSummary[]): Map<NodeType, NodeSummary
 export function ArticlePanel({ node, loading, error, onNavigate, knownRefs, siblings, onSelectSibling, catalogEntry, versionCheck }: Props) {
   const articleRef = useRef<HTMLElement>(null);
   const [expandedType, setExpandedType] = useState<NodeType | null>(null);
-  const [showHistory, setShowHistory] = useState(false);
 
-  // Reset expanded list and history panel when navigating to a different article
-  useEffect(() => { setExpandedType(null); setShowHistory(false); }, [node?.node_id]);
+  // Reset expanded list when navigating to a different article
+  useEffect(() => { setExpandedType(null); }, [node?.node_id]);
 
   useEffect(() => {
     const container = articleRef.current;
@@ -203,76 +201,68 @@ export function ArticlePanel({ node, loading, error, onNavigate, knownRefs, sibl
   const siblingGroups = siblings && siblings.length > 1 ? groupSiblingsByType(siblings) : null;
 
   return (
-    <main className={"article-panel" + (showHistory ? " article-panel--split" : "")}>
+    <main className="article-panel">
       <div className="article-panel-top">
       <header className="article-header">
         <div className={`article-header-title article-header-${node.node_type}`}>
             <span className={`badge badge-${node.node_type}`}>{node.node_type}</span>
             <span className="article-ref">{node.reference_code}</span>
             {node.title && <span className="article-title-text">{node.title}</span>}
+            {/* Type pills — right-justified in the title row */}
+            {siblingGroups && (
+              <div className="article-variants-inline">
+                {Array.from(siblingGroups.entries()).map(([type, nodes]) => {
+                  const isActive = type === node.node_type;
+                  const isExpanded = expandedType === type;
+                  const multi = nodes.length > 1;
+                  function handleClick() {
+                    if (multi) {
+                      setExpandedType(isExpanded ? null : type);
+                    } else {
+                      onSelectSibling && onSelectSibling(nodes[0]);
+                      setExpandedType(null);
+                    }
+                  }
+                  return (
+                    <button
+                      key={type}
+                      className={`article-variant-tab variant-${type}${isActive ? " is-active" : ""}${isExpanded ? " is-expanded" : ""}`}
+                      onClick={handleClick}
+                      title={multi ? `${nodes.length} ${type} — cliquer pour lister` : undefined}
+                    >
+                      <span className={`badge badge-${type}`}>{type}</span>
+                      {multi && (
+                        <span className="variant-count">
+                          ×{nodes.length}
+                          <span className="variant-chevron">{isExpanded ? "▲" : "▼"}</span>
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
         </div>
 
-        {/* Variants bar — always rendered; hosts type pills + History button */}
-        <div className="article-variants-wrapper">
-          <div className="article-variants">
-            {siblingGroups && Array.from(siblingGroups.entries()).map(([type, nodes]) => {
-              const isActive = type === node.node_type;
-              const isExpanded = expandedType === type;
-              const multi = nodes.length > 1;
-              function handleClick() {
-                if (multi) {
-                  setExpandedType(isExpanded ? null : type);
-                } else {
-                  onSelectSibling && onSelectSibling(nodes[0]);
-                  setExpandedType(null);
-                }
-              }
-              return (
-                <button
-                  key={type}
-                  className={`article-variant-tab variant-${type}${isActive ? " is-active" : ""}${isExpanded ? " is-expanded" : ""}`}
-                  onClick={handleClick}
-                  title={multi ? `${nodes.length} ${type} — cliquer pour lister` : undefined}
-                >
-                  <span className={`badge badge-${type}`}>{type}</span>
-                  {multi && (
-                    <span className="variant-count">
-                      ×{nodes.length}
-                      <span className="variant-chevron">{isExpanded ? "▲" : "▼"}</span>
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-            <button
-              className={"article-history-btn" + (showHistory ? " is-active" : "")}
-              onClick={() => setShowHistory((v) => !v)}
-              title="Version history"
-            >
-              ⏱ History
-            </button>
-          </div>
-
-          {/* Expanded list for multi-node types */}
-          {expandedType && siblingGroups && siblingGroups.get(expandedType) && (
-            <ul className="article-variant-list">
-              {siblingGroups.get(expandedType)!.map((n) => (
-                <li
-                  key={n.node_id}
-                  className={`article-variant-list-item${n.node_id === node.node_id ? " is-current" : ""}`}
-                  onClick={() => {
-                    onSelectSibling && onSelectSibling(n);
-                    if (n.node_id === node.node_id) setExpandedType(null);
-                  }}
-                >
-                  <span className={`badge badge-${n.node_type}`}>{n.node_type}</span>
-                  <span className="article-variant-list-ref">{n.reference_code}</span>
-                  {n.title && <span className="article-variant-list-title">{n.title}</span>}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+        {/* Expanded list for multi-node types */}
+        {expandedType && siblingGroups && siblingGroups.get(expandedType) && (
+          <ul className="article-variant-list">
+            {siblingGroups.get(expandedType)!.map((n) => (
+              <li
+                key={n.node_id}
+                className={`article-variant-list-item${n.node_id === node.node_id ? " is-current" : ""}`}
+                onClick={() => {
+                  onSelectSibling && onSelectSibling(n);
+                  if (n.node_id === node.node_id) setExpandedType(null);
+                }}
+              >
+                <span className={`badge badge-${n.node_type}`}>{n.node_type}</span>
+                <span className="article-variant-list-ref">{n.reference_code}</span>
+                {n.title && <span className="article-variant-list-title">{n.title}</span>}
+              </li>
+            ))}
+          </ul>
+        )}
 
         <div className="article-header-meta">
           <span className="article-hierarchy">{node.hierarchy_path}</span>
@@ -313,14 +303,6 @@ export function ArticlePanel({ node, loading, error, onNavigate, knownRefs, sibl
       )}
       </div>
 
-      {showHistory && (
-        <div className="article-panel-bottom">
-          <NodeHistoryPanel
-            nodeId={node.node_id}
-            onClose={() => setShowHistory(false)}
-          />
-        </div>
-      )}
     </main>
   );
 }

@@ -1092,6 +1092,14 @@ body,
 .article-header-GM  { background: #16CC7F; }
 .article-header-CS  { background: #A25EAB; }
 
+.article-variants-inline {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
 .article-header-title .badge {
   background: rgba(255,255,255,0.25);
   color: #ffffff;
@@ -3038,7 +3046,13 @@ body,
   font-size: 0.72rem;
   color: #6b7280;
 }
-.timeline-indexed-date {
+.timeline-indexed-title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+.timeline-indexed-date-inline {
   font-size: 0.72rem;
   color: #6b7280;
+  font-weight: 400;
 }

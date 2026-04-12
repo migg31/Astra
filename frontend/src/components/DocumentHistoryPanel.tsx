@@ -81,7 +81,10 @@ function TimelineEntry({
             )}
           </div>
           <div className="timeline-indexed-info">
-            <strong>{version.version_label}</strong>
+            <div className="timeline-indexed-title-row">
+              <strong>{version.version_label}</strong>
+              <span className="timeline-indexed-date-inline">{formatDate(version.pub_date)}</span>
+            </div>
             <span className="timeline-indexed-type">
               {version.doc_type === "xml" ? "XML (Easy Access)" : "PDF"}
             </span>
@@ -100,7 +103,6 @@ function TimelineEntry({
               </a>
             )}
           </div>
-          <div className="timeline-indexed-date">{formatDate(version.pub_date)}</div>
         </div>
         {!isLast && <div className="timeline-line" />}
       </div>
