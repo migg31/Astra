@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { CatalogEntry } from "../api";
 import type { NodeDetail, NodeSummary, NodeType } from "../types";
+import { NodeHistoryPanel } from "./NodeHistoryPanel";
 import { typeOrder } from "../tree";
 
 interface Props {
@@ -157,9 +158,10 @@ function groupSiblingsByType(siblings: NodeSummary[]): Map<NodeType, NodeSummary
 export function ArticlePanel({ node, loading, error, onNavigate, knownRefs, siblings, onSelectSibling, catalogEntry }: Props) {
   const articleRef = useRef<HTMLElement>(null);
   const [expandedType, setExpandedType] = useState<NodeType | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
 
-  // Reset expanded list when navigating to a different article
-  useEffect(() => { setExpandedType(null); }, [node?.node_id]);
+  // Reset expanded list and history panel when navigating to a different article
+  useEffect(() => { setExpandedType(null); setShowHistory(false); }, [node?.node_id]);
 
   useEffect(() => {
     const container = articleRef.current;
@@ -191,11 +193,26 @@ export function ArticlePanel({ node, loading, error, onNavigate, knownRefs, sibl
 
   return (
     <main className="article-panel">
+      {showHistory && (
+        <NodeHistoryPanel
+          nodeId={node.node_id}
+          onClose={() => setShowHistory(false)}
+        />
+      )}
       <header className="article-header">
-        <div className={`article-header-title article-header-${node.node_type}`}>
-          <span className={`badge badge-${node.node_type}`}>{node.node_type}</span>
-          <span className="article-ref">{node.reference_code}</span>
-          {node.title && <span className="article-title-text">{node.title}</span>}
+        <div className="article-header-row">
+          <div className={`article-header-title article-header-${node.node_type}`}>
+            <span className={`badge badge-${node.node_type}`}>{node.node_type}</span>
+            <span className="article-ref">{node.reference_code}</span>
+            {node.title && <span className="article-title-text">{node.title}</span>}
+          </div>
+          <button
+            className={"article-history-btn" + (showHistory ? " is-active" : "")}
+            onClick={() => setShowHistory((v) => !v)}
+            title="Version history"
+          >
+            ⏱ History
+          </button>
         </div>
 
         {/* Variant tabs — only shown when this article has multiple type variants */}

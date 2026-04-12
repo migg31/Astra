@@ -1938,6 +1938,182 @@ body,
   letter-spacing: 0.01em;
 }
 
+/* ── Article header row (title + history btn) ── */
+.article-header-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.article-history-btn {
+  flex-shrink: 0;
+  padding: 0.25rem 0.65rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #f9fafb;
+  color: #6b7280;
+  font-size: 0.72rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  white-space: nowrap;
+}
+.article-history-btn:hover,
+.article-history-btn.is-active {
+  background: #eff6ff;
+  color: #2563eb;
+  border-color: #93c5fd;
+}
+
+/* ── Node History Panel ── */
+.nh-panel {
+  border-bottom: 1px solid #e5e7eb;
+  background: #f8fafc;
+  flex-shrink: 0;
+}
+.nh-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 1.25rem 0.5rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+.nh-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #374151;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.nh-close {
+  border: none;
+  background: none;
+  font-size: 0.8rem;
+  color: #9ca3af;
+  cursor: pointer;
+  padding: 0.1rem 0.3rem;
+  border-radius: 4px;
+}
+.nh-close:hover { color: #374151; background: #f3f4f6; }
+
+.nh-state {
+  padding: 0.85rem 1.25rem;
+  font-size: 0.8125rem;
+  color: #6b7280;
+  line-height: 1.5;
+}
+.nh-state--error { color: #dc2626; }
+.nh-state-hint {
+  display: block;
+  font-size: 0.72rem;
+  color: #9ca3af;
+  margin-top: 0.25rem;
+}
+
+.nh-list {
+  list-style: none;
+  margin: 0;
+  padding: 0.4rem 0;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.nh-item {
+  padding: 0.35rem 1.25rem;
+  border-left: 2px solid transparent;
+}
+.nh-item--current { border-left-color: #2563eb; }
+
+.nh-item-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.nh-item-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.nh-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex: 1;
+}
+.nh-item-version {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #1e293b;
+}
+.nh-item-current-badge {
+  font-size: 0.6rem;
+  font-weight: 700;
+  padding: 1px 5px;
+  background: #dbeafe;
+  color: #1d4ed8;
+  border-radius: 6px;
+  text-transform: uppercase;
+}
+.nh-item-change {
+  font-size: 0.62rem;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 5px;
+}
+.nh-item-date {
+  font-size: 0.68rem;
+  color: #9ca3af;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+.nh-item-diff-btn {
+  flex-shrink: 0;
+  font-size: 0.68rem;
+  font-weight: 600;
+  font-family: inherit;
+  padding: 0.15rem 0.5rem;
+  border: 1px solid #d1d5db;
+  border-radius: 5px;
+  background: #fff;
+  color: #2563eb;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.nh-item-diff-btn:hover, .nh-item-diff-btn.is-open {
+  background: #eff6ff;
+  border-color: #93c5fd;
+}
+
+/* ── Diff view ── */
+.nh-diff {
+  margin: 0.4rem 0 0.3rem 1.1rem;
+  padding: 0.5rem 0.75rem;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  line-height: 1.8;
+  font-family: ui-monospace, "Cascadia Code", monospace;
+  color: #374151;
+}
+.nh-diff-equal  { color: #6b7280; }
+.nh-diff-insert {
+  background: #dcfce7;
+  color: #15803d;
+  border-radius: 2px;
+  padding: 0 2px;
+  font-weight: 600;
+}
+.nh-diff-delete {
+  background: #fee2e2;
+  color: #dc2626;
+  border-radius: 2px;
+  padding: 0 2px;
+  text-decoration: line-through;
+  font-weight: 600;
+}
+
 /* ── Doc info page (shown when no node selected) ── */
 .doc-info-page {
   padding: 0;

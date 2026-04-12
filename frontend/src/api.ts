@@ -73,6 +73,30 @@ export function getGraph(): Promise<GraphData> {
   return fetchJSON<GraphData>("/api/graph");
 }
 
+// History API
+export interface DiffOp {
+  op: "equal" | "insert" | "delete";
+  text: string;
+}
+
+export interface NodeVersion {
+  version_id: string;
+  version_label: string;
+  change_type: "added" | "modified" | "deleted" | "unchanged";
+  content_hash: string;
+  fetched_at: string;
+  diff_prev: DiffOp[] | null;
+}
+
+export interface NodeHistoryResponse {
+  node_id: string;
+  versions: NodeVersion[];
+}
+
+export function getNodeHistory(nodeId: string): Promise<NodeHistoryResponse> {
+  return fetchJSON<NodeHistoryResponse>(`/api/history/nodes/${nodeId}`);
+}
+
 // Admin API
 export function getStats(): Promise<SystemStats> {
   return fetchJSON<SystemStats>("/api/admin/stats");
