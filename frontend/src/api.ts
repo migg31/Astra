@@ -124,6 +124,7 @@ export interface DocumentVersion {
   is_latest_pdf: boolean;
   xml_doc_id: string | null;
   node_count: number | null;
+  pdf_url: string | null;
 }
 
 export interface DocumentHistory {

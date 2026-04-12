@@ -2820,6 +2820,17 @@ body,
   white-space: nowrap;
 }
 
+/* ── DocPicker history icon in trigger ── */
+.dp-trigger-history {
+  margin-left: auto;
+  padding: 0 0.3rem;
+  font-size: 0.9rem;
+  opacity: 0.75;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.dp-trigger-history:hover { opacity: 1; }
+
 /* ── Root error banner ── */
 .root-error-banner {
   background: #fef3c7;
@@ -2876,16 +2887,17 @@ body,
   color: #111827;
 }
 .doc-history-close {
-  background: none;
-  border: none;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
   cursor: pointer;
-  color: #6b7280;
-  font-size: 1rem;
-  padding: 0.25rem;
+  color: #374151;
+  font-size: 0.75rem;
+  padding: 0.25rem 0.6rem;
   border-radius: 4px;
   line-height: 1;
+  white-space: nowrap;
 }
-.doc-history-close:hover { background: #f3f4f6; color: #111827; }
+.doc-history-close:hover { background: #e5e7eb; color: #111827; }
 .doc-history-loading,
 .doc-history-error {
   padding: 1rem;

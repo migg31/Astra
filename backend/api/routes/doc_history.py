@@ -24,6 +24,7 @@ class DocumentVersion(BaseModel):
     is_latest_pdf: bool
     xml_doc_id: Optional[str]
     node_count: Optional[int] = None
+    pdf_url: Optional[str] = None      # PDF twin URL when this is an indexed XML entry
 
 
 class DocumentHistory(BaseModel):
@@ -91,7 +92,7 @@ def _get_history(source_key: str, source_label: str) -> DocumentHistory:
             """, (source_key,))
             rows = cur.fetchall()
 
-    versions = [
+    all_versions = [
         DocumentVersion(
             version_id=r[0],
             source_key=r[1],
@@ -108,7 +109,35 @@ def _get_history(source_key: str, source_label: str) -> DocumentHistory:
         for r in rows
     ]
 
-    indexed = next((v for v in versions if v.is_indexed), None)
+    indexed = next((v for v in all_versions if v.is_indexed), None)
+
+    # If the indexed version is XML, find the corresponding PDF (same version_label)
+    # and attach its URL to the indexed entry, then exclude it from the list.
+    indexed_pdf_url: str | None = None
+    if indexed and indexed.doc_type == "xml":
+        twin_pdf = next(
+            (v for v in all_versions
+             if v.doc_type == "pdf" and v.version_label == indexed.version_label),
+            None,
+        )
+        if twin_pdf:
+            indexed_pdf_url = twin_pdf.url
+
+    # Build final version list: keep indexed entry + all PDFs except the twin
+    twin_label = indexed.version_label if (indexed and indexed.doc_type == "xml") else None
+    versions = [
+        v for v in all_versions
+        if not (v.doc_type == "pdf" and v.version_label == twin_label and not v.is_indexed)
+    ]
+
+    # Attach pdf_url to indexed entry for the frontend
+    if indexed and indexed_pdf_url:
+        indexed = indexed.model_copy(update={"pdf_url": indexed_pdf_url})
+        versions = [
+            indexed if v.version_id == indexed.version_id else v
+            for v in versions
+        ]
+
     return DocumentHistory(
         source_key=source_key,
         source_label=source_label,

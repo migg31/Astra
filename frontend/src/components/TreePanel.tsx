@@ -23,8 +23,9 @@ interface PickerProps {
   documents: DocumentInfo[];
   selectedSource: string | null;
   onSelectSource: (source: string) => void;
+  onShowHistory: (() => void) | null;
 }
-function DocPicker({ catalog, documents, selectedSource, onSelectSource }: PickerProps) {
+function DocPicker({ catalog, documents, selectedSource, onSelectSource, onShowHistory }: PickerProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -66,6 +67,13 @@ function DocPicker({ catalog, documents, selectedSource, onSelectSource }: Picke
           {activeDoc?.nodeCount ?? ""}
         </span>
         <span className="dp-trigger-chevron">{open ? "▲" : "▼"}</span>
+        {onShowHistory && (
+          <span
+            className="dp-trigger-history"
+            title="Historique des versions"
+            onClick={(e) => { e.stopPropagation(); onShowHistory(); }}
+          >📋</span>
+        )}
       </button>
 
       {/* Dropdown */}
@@ -201,18 +209,8 @@ export function TreePanel({
         documents={documents}
         selectedSource={selectedSource}
         onSelectSource={onSelectSource}
+        onShowHistory={historySourceKey ? () => setShowHistory(true) : null}
       />
-
-      {/* ── History button ── */}
-      {historySourceKey && (
-        <button
-          className="tree-history-btn"
-          onClick={() => setShowHistory(true)}
-          title="Historique des versions"
-        >
-          <span>📋</span> Historique des versions
-        </button>
-      )}
 
       {/* ── Type filters ── */}
       {availableTypes.length > 1 && (

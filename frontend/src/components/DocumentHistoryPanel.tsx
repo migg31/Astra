@@ -33,7 +33,7 @@ export function DocumentHistoryPanel({ sourceKey, sourceLabel, onClose }: Props)
         <div className="doc-history-title">
           <span className="doc-history-label">{sourceLabel}</span>
         </div>
-        <button className="doc-history-close" onClick={onClose} title="Fermer">✕</button>
+        <button className="doc-history-close" onClick={onClose} title="Fermer">✕ Fermer</button>
       </div>
 
       {loading && <div className="doc-history-loading">Chargement…</div>}
@@ -87,6 +87,17 @@ function TimelineEntry({
             </span>
             {version.node_count != null && (
               <span className="timeline-indexed-nodes">{version.node_count} nodes</span>
+            )}
+            {version.pdf_url && (
+              <a
+                className="timeline-pdf-link"
+                href={version.pdf_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Télécharger le PDF de référence"
+              >
+                📄 PDF
+              </a>
             )}
           </div>
           <div className="timeline-indexed-date">{formatDate(version.pub_date)}</div>
