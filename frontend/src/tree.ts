@@ -111,6 +111,25 @@ function sortNodes(ns: NodeSummary[]): void {
  * Documents without sections (e.g. CS-25) produce a single unnamed section per subpart.
  * Expects nodes pre-filtered by document source and active types.
  */
+/**
+ * CS-25 Subpart from article number (25.NNN).
+ * Ranges per EASA CS-25 table of contents.
+ */
+function cs25Subpart(code: string): string {
+  const m = code.match(/25\.(\d+)/);
+  if (!m) return "Other";
+  const n = parseInt(m[1], 10);
+  if (n <= 45)   return "Subpart A — General";
+  if (n <= 253)  return "Subpart B — Flight";
+  if (n <= 459)  return "Subpart C — Structure";
+  if (n <= 843)  return "Subpart D — Design and Construction";
+  if (n <= 1203) return "Subpart E — Powerplant";
+  if (n <= 1465) return "Subpart F — Equipment";
+  if (n <= 1587) return "Subpart G — Operating Limitations and Information";
+  if (n <= 1799) return "Appendices";
+  return "Other";
+}
+
 /** Canonical label map: normalizedKey -> preferred display label */
 function canonicalLabel(
   labelMap: Map<string, string>,
@@ -139,14 +158,21 @@ export function buildTree(nodes: NodeSummary[]): SubpartGroup[] {
     if (node.node_type === "GROUP") continue;
     const parts = node.hierarchy_path.split(" / ");
 
+    const root = parts[0] ?? "";
     const structuralParts = parts.length > 1 ? parts.slice(1) : parts;
-    const explicitSubpart = structuralParts.find((p) => /^\(?SUBPART/i.test(p));
-    // If no explicit SUBPART, use the first structural segment (e.g. CS-ACNS "SECTION 1 – PBN")
-    const subpartRaw = explicitSubpart ?? (structuralParts.length > 0 ? structuralParts[0] : "Other");
-    // Find the section segment — only when subpart is explicit
-    const sectionRaw = explicitSubpart
+
+    // CS-25: derive subpart from article number (no SUBPART headers in PDF)
+    const isCS25 = /^CS-?25\b/i.test(root);
+    const explicitSubpart = isCS25
+      ? undefined
+      : structuralParts.find((p) => /^\(?SUBPART/i.test(p));
+    const subpartRaw = isCS25
+      ? cs25Subpart(articleCode(node))
+      : (explicitSubpart ?? (structuralParts.length > 0 ? structuralParts[0] : "Other"));
+    // Find the section segment — only when subpart is explicit (not CS-25)
+    const sectionRaw = (!isCS25 && explicitSubpart)
       ? (structuralParts.find((p) => /^SECTION\s+\d/i.test(p)) ?? "")
-      : (structuralParts.length > 1 ? structuralParts[1] : "");
+      : ((!isCS25 && structuralParts.length > 1) ? structuralParts[1] : "");
 
     const subpartKey = canonicalLabel(subpartLabels, subpartRaw);
     const sectionKey = canonicalLabel(sectionLabels, sectionRaw);
