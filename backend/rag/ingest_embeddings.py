@@ -34,7 +34,7 @@ def _fetch_nodes(cur) -> list[dict]:
     return [dict(zip(cols, row)) for row in cur.fetchall()]
 
 
-MAX_EMBED_CHARS = 3000  # safe limit for nomic-embed-text (~8192 tokens, 4 chars/token avg)
+MAX_EMBED_CHARS = 2000  # safe limit for nomic-embed-text (~8192 tokens, 4 chars/token avg)
 
 
 def _build_document(node: dict) -> str:
@@ -59,25 +59,50 @@ def main() -> int:
     # Batch in groups of 32 to avoid oversized requests.
     BATCH = 32
     embedded = 0
+    skipped = 0
     for i in range(0, len(nodes), BATCH):
         batch = nodes[i : i + BATCH]
         docs = [_build_document(n) for n in batch]
-        embeddings = embed_batch(docs)
-        for node, emb in zip(batch, embeddings):
-            upsert(
-                node_id=node["node_id"],
-                embedding=emb,
-                document=_build_document(node),
-                metadata={
-                    "node_type":       node["node_type"],
-                    "reference_code":  node["reference_code"],
-                    "title":           node["title"] or "",
-                    "hierarchy_path":  node["hierarchy_path"],
-                    "content_hash":    node["content_hash"],
-                },
-            )
+        try:
+            embeddings = embed_batch(docs)
+            for node, emb in zip(batch, embeddings):
+                upsert(
+                    node_id=node["node_id"],
+                    embedding=emb,
+                    document=_build_document(node),
+                    metadata={
+                        "node_type":       node["node_type"],
+                        "reference_code":  node["reference_code"],
+                        "title":           node["title"] or "",
+                        "hierarchy_path":  node["hierarchy_path"],
+                        "content_hash":    node["content_hash"],
+                    },
+                )
+        except Exception:
+            # Batch failed — retry each node individually
+            for node, doc in zip(batch, docs):
+                try:
+                    emb = embed_batch([doc])[0]
+                    upsert(
+                        node_id=node["node_id"],
+                        embedding=emb,
+                        document=doc,
+                        metadata={
+                            "node_type":       node["node_type"],
+                            "reference_code":  node["reference_code"],
+                            "title":           node["title"] or "",
+                            "hierarchy_path":  node["hierarchy_path"],
+                            "content_hash":    node["content_hash"],
+                        },
+                    )
+                except Exception:
+                    print(f"[embed] SKIP {node['reference_code']!r} — exceeds context length")
+                    skipped += 1
         embedded += len(batch)
         print(f"[embed] {embedded}/{len(nodes)} …")
+
+    if skipped:
+        print(f"[embed] warning — {skipped} nodes skipped (context too long)")
 
     print(f"[embed] done — ChromaDB collection now has {count()} documents")
     return 0
