@@ -18,7 +18,7 @@ export function AdminConsole({ onClose }: AdminConsoleProps) {
   const [health, setHealth] = useState<HealthStatus | null>(null);
   const [harvester, setHarvester] = useState<IngestionStatus | null>(null);
   const [sources, setSources] = useState<{ id: string; name: string; external_id: string; enabled: boolean }[]>([]);
-  const [selectedSources, setSelectedSources] = useState<Set<string>>(new Set(["part21"]));
+  const [selectedSources, setSelectedSources] = useState<Set<string>>(new Set());
   const logRef = useRef<HTMLPreElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [regulatorySources, setRegulatorySources] = useState<RegulatorySource[]>([]);
