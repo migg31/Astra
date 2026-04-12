@@ -203,13 +203,8 @@ export function ArticlePanel({ node, loading, error, onNavigate, knownRefs, sibl
   const siblingGroups = siblings && siblings.length > 1 ? groupSiblingsByType(siblings) : null;
 
   return (
-    <main className="article-panel">
-      {showHistory && (
-        <NodeHistoryPanel
-          nodeId={node.node_id}
-          onClose={() => setShowHistory(false)}
-        />
-      )}
+    <main className={"article-panel" + (showHistory ? " article-panel--split" : "")}>
+      <div className="article-panel-top">
       <header className="article-header">
         <div className="article-header-row">
           <div className={`article-header-title article-header-${node.node_type}`}>
@@ -325,6 +320,16 @@ export function ArticlePanel({ node, loading, error, onNavigate, knownRefs, sibl
             <p key={i}>{line}</p>
           ))}
         </article>
+      )}
+      </div>
+
+      {showHistory && (
+        <div className="article-panel-bottom">
+          <NodeHistoryPanel
+            nodeId={node.node_id}
+            onClose={() => setShowHistory(false)}
+          />
+        </div>
       )}
     </main>
   );
