@@ -68,9 +68,9 @@ def _fetch_by_codes(codes: list[str], source_filter: str | None = None) -> list[
                 AND EXISTS (
                     SELECT 1 FROM harvest_documents hd
                     WHERE hd.doc_id = rn.source_doc_id
-                      AND hd.external_id ILIKE %s
+                      AND hd.external_id = %s
                 )"""
-                params.append(f"%{source_filter}%")
+                params.append(source_filter)
             cur.execute(
                 f"""
                 SELECT rn.node_id::text, rn.node_type, rn.reference_code, rn.title,

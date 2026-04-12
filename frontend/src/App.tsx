@@ -335,7 +335,7 @@ export default function App() {
         <div className="app-ask">
           <AskPanel
             onNavigate={handleNavigateById}
-            sourceFilter={selectedSource}
+            sourceFilter={catalog.find((e) => e.source_root === selectedSource)?.harvest_key ?? null}
             sourceLabel={documents.find((d) => d.source === selectedSource)?.label ?? selectedSource}
           />
         </div>
