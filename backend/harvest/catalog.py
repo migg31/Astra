@@ -271,7 +271,7 @@ CATALOG: list[CatalogEntry] = [
         domain="avionics",
         description="Certification specifications for airborne communications, navigation and surveillance.",
         easa_url="https://www.easa.europa.eu/en/document-library/certification-specifications/cs-acns-issue-5",
-        doc_title_pattern="CS-ACNS %",
+        doc_title_pattern="%CS-ACNS%",
         harvest_key="cs-acns",
     ),
     CatalogEntry(
