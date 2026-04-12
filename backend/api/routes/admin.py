@@ -305,7 +305,7 @@ async def update_source(
     db: AsyncSession = Depends(get_session),
 ):
     """Update name, URL, or enabled flag of a source."""
-    updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    updates = {k: v for k, v in body.model_dump().items() if v is not None or k == "enabled"}
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
 
@@ -377,7 +377,7 @@ async def start_harvester(
     source_cfgs: list[dict] = []
     for source in body.sources:
         row = await db.execute(
-            text("SELECT name, base_url, external_id FROM harvest_sources WHERE external_id = :eid"),
+            text("SELECT name, base_url, external_id, enabled FROM harvest_sources WHERE external_id = :eid"),
             {"eid": source},
         )
         src = row.fetchone()
@@ -386,6 +386,9 @@ async def start_harvester(
                 raise HTTPException(status_code=404, detail=f"Source '{source}' not found")
             source_cfgs.append(REGULATORY_SOURCES[source])
         else:
+            if not src.enabled:
+                _log(f"[{src.name}] Skipped (disabled)")
+                continue
             source_cfgs.append({"name": src.name, "url": src.base_url, "external_id": src.external_id})
 
     background_tasks.add_task(_run_harvester_task_multi, source_cfgs)

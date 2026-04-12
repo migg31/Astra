@@ -19,7 +19,7 @@ app.add_middleware(
         "http://localhost:5174",
         "http://127.0.0.1:5174"
     ],
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 app.include_router(nodes_routes.router)
