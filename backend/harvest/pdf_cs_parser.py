@@ -156,6 +156,8 @@ def parse_cs_pdf(pdf_path: Path, *, regulatory_source: str | None = None) -> Par
     # Build document title prefix — used as root of hierarchy_path so the frontend
     # can identify this document as a browsable source (matches catalog source_root)
     source_prefix = regulatory_source.split(" ")[0] if regulatory_source else "CS"
+    if version_label:
+        version_label = " ".join(version_label.replace("\xa0", " ").split())
     doc_title = f"{source_prefix} {version_label}".strip() if version_label else (regulatory_source or "CS Document")
 
     nodes: list[ParsedNode] = []
@@ -217,7 +219,8 @@ def parse_cs_pdf(pdf_path: Path, *, regulatory_source: str | None = None) -> Par
                 current_heading = None
                 current_type = None
                 current_body_parts = []
-                current_hierarchy = doc_title + " / " + text.replace("\n", " ").strip()
+                subpart_label = " ".join(text.replace("\xa0", " ").replace("\n", " ").split())
+                current_hierarchy = doc_title + " / " + subpart_label
                 legacy_mode = False
                 continue
 
