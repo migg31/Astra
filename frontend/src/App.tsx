@@ -141,7 +141,7 @@ export default function App() {
 
   /** All IR nodes — used by ArticlePanel to detect navigable cross-references. */
   const knownRefs = useMemo(
-    () => new Set((allNodes ?? []).filter((n) => n.node_type === "IR").map((n) => n.reference_code)),
+    () => new Set((allNodes ?? []).filter((n) => n.node_type === "IR" || n.node_type === "CS").map((n) => n.reference_code)),
     [allNodes]
   );
 
