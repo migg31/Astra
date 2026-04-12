@@ -192,6 +192,7 @@ async def _run_harvester_task_multi(source_cfgs: list[dict]):
         loop = asyncio.get_running_loop()
 
         try:
+            seen_keys: set[tuple[str, str]] = set()  # shared across all sources to dedup snapshots
             for src_cfg in source_cfgs:
                 name = src_cfg["name"]
                 _status.current_source = name
@@ -225,9 +226,13 @@ async def _run_harvester_task_multi(source_cfgs: list[dict]):
                             source_url=f.url,
                             external_id=f.external_id,
                             content_hash=f.content_hash,
+                            seen_keys=seen_keys,
                         ),
                     )
                     _log(f"[{name}] Nodes upserted  : {report.get('nodes', 0)}")
+                    _log(f"[{name}]   added          : {report.get('nodes_added', 0)}")
+                    _log(f"[{name}]   modified       : {report.get('nodes_modified', 0)}")
+                    _log(f"[{name}]   unchanged      : {report.get('nodes_unchanged', 0)}")
                     _log(f"[{name}] Edges inserted  : {report.get('edges_inserted', 0)}")
                     pub = report.get('pub_time')
                     if pub:

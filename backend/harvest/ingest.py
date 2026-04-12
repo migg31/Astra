@@ -162,8 +162,19 @@ def upsert_document(
     return cur.fetchone()[0]
 
 
-def upsert_nodes(cur, doc_id: str, result: ParseResult, version_label: str) -> dict[tuple[str, str], str]:
-    """Upsert all parsed nodes, record version snapshots, return (node_type, reference_code) → node_id."""
+def upsert_nodes(
+    cur,
+    doc_id: str,
+    result: ParseResult,
+    version_label: str,
+    seen_keys: set[tuple[str, str]] | None = None,
+) -> dict[tuple[str, str], str]:
+    """Upsert all parsed nodes, record version snapshots, return (node_type, reference_code) → node_id.
+
+    seen_keys: optional shared set across multiple sources in the same run.
+    Nodes already present in seen_keys are skipped for snapshot recording
+    to avoid duplicate 'modified' entries when shared nodes appear in several sources.
+    """
 
     # ── 1. Fetch current hashes + content for changed-node detection ──────
     cur.execute(
@@ -246,6 +257,10 @@ def upsert_nodes(cur, doc_id: str, result: ParseResult, version_label: str) -> d
 
         # Only persist added/modified snapshots (skip unchanged to save space)
         if change_type in ("added", "modified"):
+            if seen_keys is not None and key in seen_keys:
+                counters[change_type] -= 1
+                counters["unchanged"] = counters.get("unchanged", 0) + 1
+                continue
             version_rows.append((
                 node_id,
                 version_label,
@@ -255,6 +270,8 @@ def upsert_nodes(cur, doc_id: str, result: ParseResult, version_label: str) -> d
                 change_type,
                 diff_prev,
             ))
+        if seen_keys is not None:
+            seen_keys.add(key)
 
     if version_rows:
         execute_values(
@@ -304,7 +321,7 @@ def upsert_edges(cur, node_map: dict[tuple[str, str], str], result: ParseResult)
     return len(rows)
 
 
-def ingest(xml_path: Path, *, source_name: str, source_url: str, external_id: str, content_hash: str) -> dict:
+def ingest(xml_path: Path, *, source_name: str, source_url: str, external_id: str, content_hash: str, seen_keys: set[tuple[str, str]] | None = None) -> dict:
     result = parse_easa_xml(xml_path)
 
     title = result.source_document_title or source_name
@@ -325,7 +342,7 @@ def ingest(xml_path: Path, *, source_name: str, source_url: str, external_id: st
                 pub_date=result.source_pub_time.date() if result.source_pub_time else None,
                 amended_by=result.source_version,
             )
-            node_map, counters = upsert_nodes(cur, doc_id, result, version_label)
+            node_map, counters = upsert_nodes(cur, doc_id, result, version_label, seen_keys=seen_keys)
             edges_inserted = upsert_edges(cur, node_map, result)
 
             # ── Record harvest run summary ────────────────────────────────
