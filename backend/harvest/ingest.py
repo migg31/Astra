@@ -324,7 +324,7 @@ def upsert_edges(cur, node_map: dict[tuple[str, str], str], result: ParseResult)
         rows,
         template="(%s, %s, %s::edge_type, %s, %s)",
     )
-    return len(rows)
+    return cur.rowcount  # actual rows inserted (excludes DO NOTHING conflicts)
 
 
 def ingest(xml_path: Path, *, source_name: str, source_url: str, external_id: str, content_hash: str, seen_keys: set[tuple[str, str]] | None = None, is_latest: bool = False) -> dict:
@@ -385,6 +385,7 @@ def ingest(xml_path: Path, *, source_name: str, source_url: str, external_id: st
         "nodes_unchanged": counters.get("unchanged", 0),
         "edges_attempted": len(result.edges),
         "edges_inserted": edges_inserted,
+        "edges_skipped": len(result.edges) - edges_inserted,
         "pub_time": result.source_pub_time,
     }
 

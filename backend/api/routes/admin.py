@@ -248,7 +248,9 @@ async def _run_harvester_task_multi(source_cfgs: list[dict]):
                     _log(f"[{name}]   added          : {report.get('nodes_added', 0)}")
                     _log(f"[{name}]   modified       : {report.get('nodes_modified', 0)}")
                     _log(f"[{name}]   unchanged      : {report.get('nodes_unchanged', 0)}")
-                    _log(f"[{name}] Edges inserted  : {report.get('edges_inserted', 0)}")
+                    edges_new = report.get('edges_inserted', 0)
+                    edges_skip = report.get('edges_skipped', 0)
+                    _log(f"[{name}] Edges           : {edges_new} new, {edges_skip} already existed")
                     pub = report.get('pub_time')
                     if pub:
                         _log(f"[{name}] Publication date: {pub}")
