@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>History Mockup</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f2f5; display: flex; gap: 2rem; padding: 2rem; }
+
+  /* ── OPTION 2 — Cards compactes ── */
+  .panel { background: #fff; border-radius: 10px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); width: 280px; overflow: hidden; }
+  .panel-header { background: #78350f; color: #fde68a; padding: 0.75rem 1rem; display: flex; align-items: center; justify-content: space-between; }
+  .panel-header-title { font-weight: 700; font-size: 0.9rem; }
+  .panel-header-close { background: rgba(255,255,255,0.15); border: none; color: #fde68a; border-radius: 5px; padding: 0.2rem 0.6rem; font-size: 0.75rem; cursor: pointer; }
+
+  .version-list { overflow-y: auto; max-height: 520px; }
+  .version-item { display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem 1rem; border-bottom: 1px solid #f3f4f6; cursor: pointer; transition: background 0.1s; }
+  .version-item:hover { background: #f9fafb; }
+  .version-item.indexed { background: #eff6ff; border-left: 3px solid #2563eb; padding-left: calc(1rem - 3px); }
+  .version-item.indexed:hover { background: #dbeafe; }
+  .v-label { font-size: 0.8rem; font-weight: 600; color: #111827; flex: 1; }
+  .version-item.indexed .v-label { color: #1d4ed8; }
+  .v-date { font-size: 0.7rem; color: #9ca3af; white-space: nowrap; }
+  .v-badge { font-size: 0.6rem; font-weight: 700; padding: 0.15rem 0.4rem; border-radius: 4px; white-space: nowrap; }
+  .v-badge.xml { background: #dbeafe; color: #1d4ed8; }
+  .v-badge.pdf { background: #f3f4f6; color: #6b7280; }
+  .v-badge.latest { background: #fef9c3; color: #854d0e; }
+  .indexed-chip { font-size: 0.6rem; background: #2563eb; color: #fff; border-radius: 4px; padding: 0.15rem 0.4rem; font-weight: 700; }
+  .v-link { font-size: 0.75rem; color: #9ca3af; text-decoration: none; margin-left: auto; }
+  .v-link:hover { color: #2563eb; }
+
+  /* ── OPTION 3 — Accordion ── */
+  .acc-panel { background: #fff; border-radius: 10px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); width: 280px; overflow: hidden; }
+  .acc-header { background: #78350f; color: #fde68a; padding: 0.75rem 1rem; display: flex; align-items: center; justify-content: space-between; }
+  .acc-header-title { font-weight: 700; font-size: 0.9rem; }
+  .acc-indexed-banner { background: #eff6ff; border-bottom: 1px solid #bfdbfe; padding: 0.5rem 1rem; display: flex; align-items: center; gap: 0.5rem; }
+  .acc-indexed-label { font-size: 0.72rem; font-weight: 700; color: #1d4ed8; }
+  .acc-indexed-sub { font-size: 0.68rem; color: #6b7280; }
+  .acc-indexed-node-count { font-size: 0.68rem; background: #dbeafe; color: #1d4ed8; padding: 0.1rem 0.4rem; border-radius: 4px; font-weight: 600; margin-left: auto; }
+
+  .acc-era { border-bottom: 1px solid #f3f4f6; }
+  .acc-era-header { display: flex; align-items: center; gap: 0.5rem; padding: 0.45rem 1rem; cursor: pointer; background: #f9fafb; font-size: 0.72rem; font-weight: 600; color: #6b7280; user-select: none; }
+  .acc-era-header:hover { background: #f3f4f6; }
+  .acc-era-header .chevron { font-size: 0.55rem; margin-left: auto; }
+  .acc-era-header .era-count { background: #e5e7eb; color: #6b7280; border-radius: 10px; padding: 0.1rem 0.45rem; font-size: 0.65rem; }
+  .acc-era-body { }
+  .acc-item { display: flex; align-items: center; gap: 0.6rem; padding: 0.45rem 1rem 0.45rem 1.5rem; border-bottom: 1px solid #f9fafb; cursor: pointer; }
+  .acc-item:hover { background: #f9fafb; }
+  .acc-item.indexed { background: #eff6ff; border-left: 3px solid #2563eb; padding-left: calc(1.5rem - 3px); }
+  .acc-v-label { font-size: 0.78rem; font-weight: 600; color: #111827; flex: 1; }
+  .acc-item.indexed .acc-v-label { color: #1d4ed8; }
+  .acc-v-date { font-size: 0.68rem; color: #9ca3af; }
+  .acc-v-badge { font-size: 0.58rem; font-weight: 700; padding: 0.12rem 0.35rem; border-radius: 3px; }
+  .acc-v-badge.xml { background: #dbeafe; color: #1d4ed8; }
+  .acc-v-badge.pdf { background: #f3f4f6; color: #9ca3af; }
+  .acc-v-badge.latest { background: #fef9c3; color: #854d0e; }
+  .acc-v-link { font-size: 0.7rem; color: #d1d5db; text-decoration: none; }
+  .acc-v-link:hover { color: #2563eb; }
+  .acc-era-body.closed { display: none; }
+</style>
+</head>
+<body>
+
+<!-- ═══ OPTION 2 — Liste compacte ═══ -->
+<div class="panel">
+  <div class="panel-header">
+    <span class="panel-header-title">CS-25 — Large Aeroplanes</span>
+    <button class="panel-header-close">✕ Fermer</button>
+  </div>
+  <div class="version-list">
+
+    <div class="version-item">
+      <span class="v-label">Amendment 28</span>
+      <span class="v-badge latest">latest PDF</span>
+      <span class="v-date">janv. 2024</span>
+      <a class="v-link" href="#" title="Ouvrir PDF">↗</a>
+    </div>
+
+    <div class="version-item indexed">
+      <span class="indexed-chip">INDEXÉ</span>
+      <span class="v-label">Amendment 27</span>
+      <span class="v-badge xml">XML</span>
+      <span class="v-date">avr. 2023</span>
+      <a class="v-link" href="#" title="Ouvrir PDF">↗</a>
+    </div>
+
+    <div class="version-item">
+      <span class="v-label">Amendment 26</span>
+      <span class="v-badge pdf">PDF</span>
+      <span class="v-date">juil. 2022</span>
+      <a class="v-link" href="#" title="Ouvrir PDF">↗</a>
+    </div>
+    <div class="version-item">
+      <span class="v-label">Amendment 25</span>
+      <span class="v-badge pdf">PDF</span>
+      <span class="v-date">juil. 2021</span>
+      <a class="v-link" href="#">↗</a>
+    </div>
+    <div class="version-item">
+      <span class="v-label">Amendment 24</span>
+      <span class="v-badge pdf">PDF</span>
+      <span class="v-date">oct. 2020</span>
+      <a class="v-link" href="#">↗</a>
+    </div>
+    <div class="version-item">
+      <span class="v-label">Amendment 23</span>
+      <span class="v-badge pdf">PDF</span>
+      <span class="v-date">mai 2020</span>
+      <a class="v-link" href="#">↗</a>
+    </div>
+    <div class="version-item">
+      <span class="v-label">Amendment 22</span>
+      <span class="v-badge pdf">PDF</span>
+      <span class="v-date">oct. 2018</span>
+      <a class="v-link" href="#">↗</a>
+    </div>
+    <div class="version-item">
+      <span class="v-label">Amendment 21</span>
+      <span class="v-badge pdf">PDF</span>
+      <span class="v-date">déc. 2017</span>
+      <a class="v-link" href="#">↗</a>
+    </div>
+    <div class="version-item">
+      <span class="v-label">Amendment 20</span>
+      <span class="v-badge pdf">PDF</span>
+      <span class="v-date">mars 2017</span>
+      <a class="v-link" href="#">↗</a>
+    </div>
+    <div class="version-item">
+      <span class="v-label">Amendment 19</span>
+      <span class="v-badge pdf">PDF</span>
+      <span class="v-date">août 2016</span>
+      <a class="v-link" href="#">↗</a>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ OPTION 3 — Accordion par ère ═══ -->
+<div class="acc-panel">
+  <div class="acc-header">
+    <span class="acc-header-title">CS-25 — Large Aeroplanes</span>
+    <button class="panel-header-close">✕ Fermer</button>
+  </div>
+
+  <!-- Indexed banner -->
+  <div class="acc-indexed-banner">
+    <div>
+      <div class="acc-indexed-label">🗂 Version indexée — Amendment 27</div>
+      <div class="acc-indexed-sub">XML (Easy Access) · avr. 2023 · ⚠ pas la dernière</div>
+    </div>
+    <span class="acc-indexed-node-count">836 nodes</span>
+  </div>
+
+  <!-- Era: 2022-2024 (open) -->
+  <div class="acc-era">
+    <div class="acc-era-header">
+      <span>2022 – 2024</span>
+      <span class="era-count">3</span>
+      <span class="chevron">▼</span>
+    </div>
+    <div class="acc-era-body">
+      <div class="acc-item">
+        <span class="acc-v-label">Amendment 28</span>
+        <span class="acc-v-badge latest">latest</span>
+        <span class="acc-v-date">janv. 2024</span>
+        <a class="acc-v-link" href="#">↗</a>
+      </div>
+      <div class="acc-item indexed">
+        <span class="acc-v-label">Amendment 27</span>
+        <span class="acc-v-badge xml">XML</span>
+        <span class="acc-v-date">avr. 2023</span>
+        <a class="acc-v-link" href="#">↗</a>
+      </div>
+      <div class="acc-item">
+        <span class="acc-v-label">Amendment 26</span>
+        <span class="acc-v-badge pdf">PDF</span>
+        <span class="acc-v-date">juil. 2022</span>
+        <a class="acc-v-link" href="#">↗</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Era: 2019-2021 (open) -->
+  <div class="acc-era">
+    <div class="acc-era-header">
+      <span>2019 – 2021</span>
+      <span class="era-count">3</span>
+      <span class="chevron">▼</span>
+    </div>
+    <div class="acc-era-body">
+      <div class="acc-item">
+        <span class="acc-v-label">Amendment 25</span>
+        <span class="acc-v-badge pdf">PDF</span>
+        <span class="acc-v-date">juil. 2021</span>
+        <a class="acc-v-link" href="#">↗</a>
+      </div>
+      <div class="acc-item">
+        <span class="acc-v-label">Amendment 24</span>
+        <span class="acc-v-badge pdf">PDF</span>
+        <span class="acc-v-date">oct. 2020</span>
+        <a class="acc-v-link" href="#">↗</a>
+      </div>
+      <div class="acc-item">
+        <span class="acc-v-label">Amendment 23</span>
+        <span class="acc-v-badge pdf">PDF</span>
+        <span class="acc-v-date">mai 2020</span>
+        <a class="acc-v-link" href="#">↗</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Era: 2016-2018 (collapsed) -->
+  <div class="acc-era">
+    <div class="acc-era-header">
+      <span>2016 – 2018</span>
+      <span class="era-count">4</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="acc-era-body closed"></div>
+  </div>
+
+  <!-- Era: 2003-2015 (collapsed) -->
+  <div class="acc-era">
+    <div class="acc-era-header">
+      <span>2003 – 2015</span>
+      <span class="era-count">18</span>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="acc-era-body closed"></div>
+  </div>
+</div>
+
+</body>
+</html>

@@ -3,8 +3,8 @@ import type { DocumentHistory, DocumentVersion } from "../api";
 import { getDocHistory } from "../api";
 
 interface Props {
-  sourceKey: string;           // e.g. 'cs-25', 'cs-acns'
-  sourceLabel: string;         // display label
+  sourceKey: string;
+  sourceLabel: string;
   onClose: () => void;
 }
 
@@ -28,26 +28,19 @@ export function DocumentHistoryPanel({ sourceKey, sourceLabel, onClose }: Props)
   }, [sourceKey]);
 
   return (
-    <div className="doc-history-panel">
-      <div className="doc-history-header">
-        <div className="doc-history-title">
-          <span className="doc-history-label">{sourceLabel}</span>
-        </div>
-        <button className="doc-history-close" onClick={onClose} title="Fermer">✕ Fermer</button>
+    <div className="dhl-panel">
+      <div className="dhl-header">
+        <span className="dhl-title">{sourceLabel}</span>
+        <button className="dhl-close" onClick={onClose}>✕ Fermer</button>
       </div>
 
-      {loading && <div className="doc-history-loading">Chargement…</div>}
-      {error && <div className="doc-history-error">{error}</div>}
+      {loading && <div className="dhl-state">Chargement…</div>}
+      {error   && <div className="dhl-state dhl-state--error">{error}</div>}
 
       {history && (
-        <div className="doc-history-timeline">
-          {history.versions.map((v, i) => (
-            <TimelineEntry
-              key={v.version_id}
-              version={v}
-              isFirst={i === 0}
-              isLast={i === history.versions.length - 1}
-            />
+        <div className="dhl-list">
+          {history.versions.map((v) => (
+            <VersionRow key={v.version_id} v={v} />
           ))}
         </div>
       )}
@@ -55,80 +48,40 @@ export function DocumentHistoryPanel({ sourceKey, sourceLabel, onClose }: Props)
   );
 }
 
-function TimelineEntry({
-  version,
-  isFirst,
-  isLast,
-}: {
-  version: DocumentVersion;
-  isFirst: boolean;
-  isLast: boolean;
-}) {
-  if (version.is_indexed) {
-    return (
-      <div className="timeline-entry timeline-entry--indexed">
-        {/* Vertical line above */}
-        {!isFirst && <div className="timeline-line timeline-line--dashed" />}
-        <div className="timeline-indexed-card">
-          <div className="timeline-indexed-badge">
-            <span className="timeline-indexed-icon">🗂</span>
-            <span className="timeline-indexed-tag">Version indexée</span>
-            {version.is_latest_pdf && (
-              <span className="timeline-pill timeline-pill--latest">LATEST</span>
-            )}
-            {!version.is_latest_pdf && (
-              <span className="timeline-pill timeline-pill--warn">⚠ Pas la dernière version</span>
-            )}
-          </div>
-          <div className="timeline-indexed-info">
-            <div className="timeline-indexed-title-row">
-              <strong>{version.version_label}</strong>
-              <span className="timeline-indexed-date-inline">{formatDate(version.pub_date)}</span>
-            </div>
-            <span className="timeline-indexed-type">
-              {version.doc_type === "xml" ? "XML (Easy Access)" : "PDF"}
-            </span>
-            {version.node_count != null && (
-              <span className="timeline-indexed-nodes">{version.node_count} nodes</span>
-            )}
-            {version.pdf_url && (
-              <a
-                className="timeline-pdf-link"
-                href={version.pdf_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                title="Télécharger le PDF de référence"
-              >
-                📄 PDF
-              </a>
-            )}
-          </div>
-        </div>
-        {!isLast && <div className="timeline-line" />}
-      </div>
-    );
-  }
-
+function VersionRow({ v }: { v: DocumentVersion }) {
   return (
-    <div className="timeline-entry">
-      {!isFirst && <div className="timeline-line" />}
-      <div className="timeline-dot-row">
-        <div className="timeline-dot" />
-        <div className="timeline-entry-content">
-          <span className="timeline-version-label">{version.version_label}</span>
-          <span className="timeline-version-date">{formatDate(version.pub_date)}</span>
-          <a
-            className="timeline-pdf-link"
-            href={version.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            title="Ouvrir sur EASA"
-          >
-            {version.is_latest_pdf ? "📄 PDF latest" : "📄 PDF"}
-          </a>
+    <div className={`dhl-row${v.is_indexed ? " dhl-row--indexed" : ""}`}>
+      {/* Left: indexed chip or empty */}
+      <div className="dhl-indexed-col">
+        {v.is_indexed && <span className="dhl-indexed-chip">INDEXÉ</span>}
+      </div>
+
+      {/* Center: label + badges */}
+      <div className="dhl-center">
+        <span className="dhl-label">{v.version_label}</span>
+        <div className="dhl-badges">
+          {v.is_latest_pdf && <span className="dhl-badge dhl-badge--latest">latest</span>}
+          {v.is_indexed && <span className="dhl-badge dhl-badge--xml">
+            {v.doc_type === "xml" ? "XML" : "PDF"}
+          </span>}
+          {v.is_indexed && v.node_count != null && (
+            <span className="dhl-badge dhl-badge--count">{v.node_count} nodes</span>
+          )}
+          {v.is_indexed && !v.is_latest_pdf && (
+            <span className="dhl-badge dhl-badge--warn">⚠ pas la dernière</span>
+          )}
         </div>
       </div>
-      {!isLast && <div className="timeline-line" />}
+
+      {/* Right: date + link */}
+      <span className="dhl-date">{formatDate(v.pub_date)}</span>
+      <a
+        className="dhl-link"
+        href={v.pdf_url ?? v.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        title="Ouvrir sur EASA"
+      >↗</a>
     </div>
   );
 }
