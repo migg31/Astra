@@ -5,9 +5,10 @@ import type { AskResponse, SourceNode } from "../types";
 interface Props {
   onNavigate: (nodeId: string) => void;
   sourceFilter?: string | null;
+  sourceLabel?: string | null;
 }
 
-export function AskPanel({ onNavigate, sourceFilter }: Props) {
+export function AskPanel({ onNavigate, sourceFilter, sourceLabel }: Props) {
   const [question, setQuestion] = useState("");
   const [result, setResult] = useState<AskResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -58,7 +59,7 @@ export function AskPanel({ onNavigate, sourceFilter }: Props) {
               onChange={(e) => setRestrictToSource(e.target.checked)}
               disabled={loading}
             />
-            <span>Restrict to <strong>{sourceFilter}</strong> only</span>
+            <span>Restrict to <strong>{sourceLabel ?? sourceFilter}</strong> only</span>
           </label>
         )}
         <button className="ask-btn" type="submit" disabled={loading || !question.trim()}>

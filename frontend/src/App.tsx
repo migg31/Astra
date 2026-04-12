@@ -333,7 +333,11 @@ export default function App() {
       )}
       {mode === "ask" && (
         <div className="app-ask">
-          <AskPanel onNavigate={handleNavigateById} sourceFilter={selectedSource} />
+          <AskPanel
+            onNavigate={handleNavigateById}
+            sourceFilter={selectedSource}
+            sourceLabel={documents.find((d) => d.source === selectedSource)?.label ?? selectedSource}
+          />
         </div>
       )}
       {mode === "navigate" && (
