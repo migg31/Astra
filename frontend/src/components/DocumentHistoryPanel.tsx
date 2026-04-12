@@ -67,7 +67,7 @@ function VersionRow({ v }: { v: DocumentVersion }) {
           {v.is_indexed && v.node_count != null && (
             <span className="dhl-badge dhl-badge--count">{v.node_count} nodes</span>
           )}
-          {v.is_indexed && !v.is_latest_pdf && (
+          {v.is_indexed && v.doc_type !== "xml" && !v.is_latest_pdf && (
             <span className="dhl-badge dhl-badge--warn">⚠ not latest</span>
           )}
         </div>
