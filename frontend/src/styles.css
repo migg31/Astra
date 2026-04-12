@@ -1360,7 +1360,8 @@ body,
 }
 .admin-content {
   padding: 2rem 2.5rem;
-  max-width: 1100px;
+  width: 100%;
+  box-sizing: border-box;
 }
 .admin-page-title {
   font-size: 1.4rem;
@@ -1699,8 +1700,8 @@ body,
 
 /* Tall log variant */
 .admin-log--tall {
-  max-height: 420px;
-  min-height: 180px;
+  max-height: calc(100vh - 280px);
+  min-height: 300px;
 }
 
 /* Status badges (version check) */

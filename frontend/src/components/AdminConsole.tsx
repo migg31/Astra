@@ -180,9 +180,9 @@ export function AdminConsole({ onClose }: AdminConsoleProps) {
               Version snapshots are recorded automatically for every changed node.
             </p>
 
-            <div style={{ display: "flex", gap: "1.25rem", alignItems: "flex-start", flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: "1.25rem", alignItems: "flex-start", width: "100%" }}>
               {/* Source selector */}
-              <div className="admin-card" style={{ minWidth: 280, flex: "0 0 auto" }}>
+              <div className="admin-card" style={{ width: 300, flexShrink: 0 }}>
                 <h2 className="admin-card-title">Select Sources</h2>
                 <div className="admin-source-checklist">
                   {sources.length === 0 && (
