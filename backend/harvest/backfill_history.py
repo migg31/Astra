@@ -48,7 +48,7 @@ CS25_VERSIONS: list[dict] = [
     {"version_label": "Amendment 24",  "url": f"{EASA_BASE}/en/downloads/108354/en"},
     {"version_label": "Amendment 25",  "url": f"{EASA_BASE}/en/downloads/116279/en"},
     {"version_label": "Amendment 26",  "url": f"{EASA_BASE}/en/downloads/121128/en"},
-    {"version_label": "Amendment 27",  "url": f"{EASA_BASE}/en/downloads/136622/en"},
+    # Amendment 27 SKIPPED — EASA published delta only (17 pages), not a consolidated document
     {"version_label": "Amendment 28",  "url": f"{EASA_BASE}/en/downloads/139073/en"},
 ]
 

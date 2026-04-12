@@ -29,14 +29,20 @@ PAGE_HEADER_SIZE_MAX = 9.5  # headers/footers at 9pt are ignored
 
 # Patterns to identify node type from heading text
 _CS_RE  = re.compile(r"^CS[\s\-]", re.IGNORECASE)
-_AMC_RE = re.compile(r"^AMC[\s\d]", re.IGNORECASE)
+_AMC_RE = re.compile(r"^AMC[\s\d\-]", re.IGNORECASE)
 _GM_RE  = re.compile(r"^GM[\s\d]",  re.IGNORECASE)
 
 # Pattern to extract reference code from heading
 # e.g. "CS 25.581 Lightning protection" → "CS 25.581"
 # e.g. "AMC 25.581 Lightning protection" → "AMC 25.581"
+# e.g. "AMC 25-1 ..." → "AMC 25-1"
+# e.g. "AMC to Appendix S, S25.30(a) ..." → "AMC to Appendix S, S25.30(a)"
 _REF_RE = re.compile(
-    r"^((?:CS|AMC|GM)[\s\-][\w\.]+(?:\([^)]*\))*(?:[\.\-]\d+)*)",
+    r"^((?:CS|AMC|GM)[\s\-][\w\.\-]+(?:\([^)]*\))*(?:[\.-]\d+)*)",
+    re.IGNORECASE,
+)
+_REF_APPENDIX_RE = re.compile(
+    r"^((?:AMC|GM) to [^,\n]+(?:,[^\n]+)?)",
     re.IGNORECASE,
 )
 
@@ -61,10 +67,14 @@ def _node_type(heading: str) -> str | None:
 
 
 def _reference_code(heading: str) -> str:
-    m = _REF_RE.match(heading.strip())
+    h = heading.strip()
+    m = _REF_APPENDIX_RE.match(h)
+    if m:
+        return m.group(1).strip()[:120]
+    m = _REF_RE.match(h)
     if m:
         return m.group(1).strip()
-    return heading.strip().split("\n")[0][:80]
+    return h.split("\n")[0][:80]
 
 
 def _title(heading: str) -> str:
