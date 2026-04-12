@@ -261,6 +261,30 @@ export function buildTree(nodes: NodeSummary[]): SubpartGroup[] {
     result.push({ name: subpartName, sections, articles: allArticles });
   }
 
-  result.sort((a, b) => a.name.localeCompare(b.name));
+  // Canonical order for CS-25 subparts (matches PDF ToC)
+  const CS25_ORDER = [
+    "Subpart A — General",
+    "Subpart B — Flight",
+    "Subpart C — Structure",
+    "Subpart D — Design and Construction",
+    "Subpart E — Powerplant",
+    "Subpart F — Equipment",
+    "Subpart G — Operating Limitations and Information",
+    "Subpart H — Electrical Wiring Interconnection Systems",
+    "Subpart J — Auxiliary Power Unit Installations",
+    "Appendices to CS-25",
+    "General AMCs",
+  ];
+  const cs25OrderMap = new Map(CS25_ORDER.map((n, i) => [n.toUpperCase(), i]));
+  const isCS25Result = result.some((s) => cs25OrderMap.has(s.name.toUpperCase()));
+  if (isCS25Result) {
+    result.sort((a, b) => {
+      const ia = cs25OrderMap.get(a.name.toUpperCase()) ?? 99;
+      const ib = cs25OrderMap.get(b.name.toUpperCase()) ?? 99;
+      return ia !== ib ? ia - ib : a.name.localeCompare(b.name);
+    });
+  } else {
+    result.sort((a, b) => a.name.localeCompare(b.name));
+  }
   return result;
 }
