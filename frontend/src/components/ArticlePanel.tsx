@@ -218,6 +218,26 @@ export function ArticlePanel({ node, loading, error, onNavigate, knownRefs, sibl
     }
     toRemove.forEach(el => el.parentNode?.removeChild(el));
 
+    // Add indentation based on EASA list markers
+    // Level 1: (a)-(z)         → 1.5rem
+    // Level 2: (1)-(99)        → 3rem
+    // Level 3: (i),(ii),...    → 4.5rem
+    const INDENT_RE = /^\s*\(([a-z]{1,3}|\d+)\)\s/;
+    const ROMAN = /^(i{1,3}|iv|vi{0,3}|ix|x{1,3}|xi{1,3})$/i;
+    for (const p of Array.from(container.querySelectorAll("p"))) {
+      const text = p.textContent ?? "";
+      const m = text.match(INDENT_RE);
+      if (!m) continue;
+      const marker = m[1];
+      if (ROMAN.test(marker)) {
+        p.classList.add("easa-indent-3");
+      } else if (/^\d+$/.test(marker)) {
+        p.classList.add("easa-indent-2");
+      } else {
+        p.classList.add("easa-indent-1");
+      }
+    }
+
     const ownRefMatch = node.reference_code.match(/\b(?:[A-Z]+\.){1,3}[A-Z0-9]+(?:\.[A-Z0-9]+)*\b/);
     const ownRef = ownRefMatch ? ownRefMatch[0] : "";
     linkifyDom(container, ownRef, knownRefs);
