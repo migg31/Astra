@@ -122,9 +122,13 @@ export function buildTree(nodes: NodeSummary[]): SubpartGroup[] {
     // Find the subpart segment (SUBPART X or Subpart X) — search all segments except last
     // For PDF nodes with 2 levels (doc / subpart), subpart is at index 1 (last structural segment)
     const structuralParts = parts.length > 1 ? parts.slice(1) : parts;
-    const subpart = structuralParts.find((p) => /^\(?SUBPART/i.test(p)) ?? "Other";
-    // Find the section segment (Section N or SECTION N) — may not exist
-    const section = structuralParts.find((p) => /^SECTION\s+\d/i.test(p)) ?? "";
+    const explicitSubpart = structuralParts.find((p) => /^\(?SUBPART/i.test(p));
+    // If no explicit SUBPART, use the first structural segment (e.g. CS-ACNS "SECTION 1 – PBN")
+    const subpart = explicitSubpart ?? (structuralParts.length > 0 ? structuralParts[0] : "Other");
+    // Find the section segment (Section N or SECTION N) — only when subpart is explicit
+    const section = explicitSubpart
+      ? (structuralParts.find((p) => /^SECTION\s+\d/i.test(p)) ?? "")
+      : (structuralParts.length > 1 ? structuralParts[1] : "");
 
     const art = articleCode(node);
 
