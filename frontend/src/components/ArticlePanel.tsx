@@ -212,66 +212,67 @@ export function ArticlePanel({ node, loading, error, onNavigate, knownRefs, sibl
             {node.title && <span className="article-title-text">{node.title}</span>}
         </div>
 
-        {/* Variant tabs — only shown when this article has multiple type variants */}
-        {siblingGroups && (
-          <div className="article-variants-wrapper">
-            <div className="article-variants">
-              {Array.from(siblingGroups.entries()).map(([type, nodes]) => {
-                const isActive = type === node.node_type;
-                const isExpanded = expandedType === type;
-                const multi = nodes.length > 1;
-
-                function handleClick() {
-                  if (multi) {
-                    // Always just toggle the list — user picks from it
-                    setExpandedType(isExpanded ? null : type);
-                  } else {
-                    // Single node: navigate directly
-                    onSelectSibling && onSelectSibling(nodes[0]);
-                    setExpandedType(null);
-                  }
+        {/* Variants bar — always rendered; hosts type pills + History button */}
+        <div className="article-variants-wrapper">
+          <div className="article-variants">
+            {siblingGroups && Array.from(siblingGroups.entries()).map(([type, nodes]) => {
+              const isActive = type === node.node_type;
+              const isExpanded = expandedType === type;
+              const multi = nodes.length > 1;
+              function handleClick() {
+                if (multi) {
+                  setExpandedType(isExpanded ? null : type);
+                } else {
+                  onSelectSibling && onSelectSibling(nodes[0]);
+                  setExpandedType(null);
                 }
-
-                return (
-                  <button
-                    key={type}
-                    className={`article-variant-tab variant-${type}${isActive ? " is-active" : ""}${isExpanded ? " is-expanded" : ""}`}
-                    onClick={handleClick}
-                    title={multi ? `${nodes.length} ${type} — cliquer pour lister` : undefined}
-                  >
-                    <span className={`badge badge-${type}`}>{type}</span>
-                    {multi && (
-                      <span className="variant-count">
-                        ×{nodes.length}
-                        <span className="variant-chevron">{isExpanded ? "▲" : "▼"}</span>
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Expanded list for multi-node types */}
-            {expandedType && siblingGroups.get(expandedType) && (
-              <ul className="article-variant-list">
-                {siblingGroups.get(expandedType)!.map((n) => (
-                  <li
-                    key={n.node_id}
-                    className={`article-variant-list-item${n.node_id === node.node_id ? " is-current" : ""}`}
-                    onClick={() => {
-                      onSelectSibling && onSelectSibling(n);
-                      if (n.node_id === node.node_id) setExpandedType(null);
-                    }}
-                  >
-                    <span className={`badge badge-${n.node_type}`}>{n.node_type}</span>
-                    <span className="article-variant-list-ref">{n.reference_code}</span>
-                    {n.title && <span className="article-variant-list-title">{n.title}</span>}
-                  </li>
-                ))}
-              </ul>
-            )}
+              }
+              return (
+                <button
+                  key={type}
+                  className={`article-variant-tab variant-${type}${isActive ? " is-active" : ""}${isExpanded ? " is-expanded" : ""}`}
+                  onClick={handleClick}
+                  title={multi ? `${nodes.length} ${type} — cliquer pour lister` : undefined}
+                >
+                  <span className={`badge badge-${type}`}>{type}</span>
+                  {multi && (
+                    <span className="variant-count">
+                      ×{nodes.length}
+                      <span className="variant-chevron">{isExpanded ? "▲" : "▼"}</span>
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+            <button
+              className={"article-history-btn" + (showHistory ? " is-active" : "")}
+              onClick={() => setShowHistory((v) => !v)}
+              title="Version history"
+            >
+              ⏱ History
+            </button>
           </div>
-        )}
+
+          {/* Expanded list for multi-node types */}
+          {expandedType && siblingGroups && siblingGroups.get(expandedType) && (
+            <ul className="article-variant-list">
+              {siblingGroups.get(expandedType)!.map((n) => (
+                <li
+                  key={n.node_id}
+                  className={`article-variant-list-item${n.node_id === node.node_id ? " is-current" : ""}`}
+                  onClick={() => {
+                    onSelectSibling && onSelectSibling(n);
+                    if (n.node_id === node.node_id) setExpandedType(null);
+                  }}
+                >
+                  <span className={`badge badge-${n.node_type}`}>{n.node_type}</span>
+                  <span className="article-variant-list-ref">{n.reference_code}</span>
+                  {n.title && <span className="article-variant-list-title">{n.title}</span>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
 
         <div className="article-header-meta">
           <span className="article-hierarchy">{node.hierarchy_path}</span>
@@ -292,13 +293,6 @@ export function ArticlePanel({ node, loading, error, onNavigate, knownRefs, sibl
                 ⚠ {versionCheck.latest_version}
               </span>
             )}
-            <button
-              className={"article-history-btn" + (showHistory ? " is-active" : "")}
-              onClick={() => setShowHistory((v) => !v)}
-              title="Version history"
-            >
-              ⏱ History
-            </button>
           </span>
         </div>
       </header>
