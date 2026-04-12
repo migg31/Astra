@@ -18,14 +18,14 @@ import type {
   NodeType,
 } from "./types";
 
-type AppMode = "navigate" | "consult" | "ask" | "map";
+type AppMode = "navigate" | "consult" | "ask" | "map" | "admin";
 
 export default function App() {
   const [mode, setMode] = useState<AppMode>("navigate");
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [catalog, setCatalog] = useState<CatalogEntry[]>([]);
   const [versionChecks, setVersionChecks] = useState<VersionCheckResult[]>([]);
-  const [isAdminOpen, setIsAdminOpen] = useState(false);
+  const [_isAdminOpen, _setIsAdminOpen] = useState(false);
   const [allNodes, setAllNodes] = useState<NodeSummary[] | null>(null);
   const [rootError, setRootError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -255,18 +255,18 @@ export default function App() {
         </div>
         <div style={{ marginLeft: "auto" }}>
           <button
-            className="app-tab"
+            className={"app-tab" + (mode === "admin" ? " is-active" : "")}
             style={{
-              background: "rgba(255,255,255,0.1)",
+              background: mode === "admin" ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.08)",
               border: "1px solid rgba(255,255,255,0.2)",
               display: "flex",
               alignItems: "center",
-              gap: "0.5rem",
+              gap: "0.4rem",
             }}
-            onClick={() => setIsAdminOpen(true)}
+            onClick={() => handleModeChange("admin")}
           >
-            <span style={{ fontSize: "1.1rem" }}>⚙️</span>
-            CONSOLE
+            <span style={{ fontSize: "1rem" }}>⚙</span>
+            ADMIN
           </button>
         </div>
       </nav>
@@ -326,7 +326,9 @@ export default function App() {
         />
       )}
 
-      <AdminConsole isOpen={isAdminOpen} onClose={() => setIsAdminOpen(false)} />
+      {mode === "admin" && (
+        <AdminConsole onClose={() => setMode("navigate")} />
+      )}
     </div>
   );
 }
