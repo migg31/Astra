@@ -244,13 +244,16 @@ def populate(source: dict, conn) -> None:
             if row:
                 xml_doc_id = row[0]
 
+        has_xml = any(v["doc_type"] == "xml" for v in source["versions"])
+
         for v in source["versions"]:
             is_latest_pdf = v.get("is_latest_pdf", False)
-            is_indexed = (v["doc_type"] == "xml")  # XML versions are indexed by default
-
-            # For PDF: indexed only if no XML version exists for this source
-            if v["doc_type"] == "pdf" and xml_doc_id is None and is_latest_pdf:
-                is_indexed = True
+            if v["doc_type"] == "xml":
+                is_indexed = True                   # XML always indexed
+            elif not has_xml and is_latest_pdf:
+                is_indexed = True                   # PDF indexed only when no XML exists at all
+            else:
+                is_indexed = False                  # PDF never indexed when XML present
 
             cur.execute(
                 """
@@ -261,6 +264,7 @@ def populate(source: dict, conn) -> None:
                 ON CONFLICT (source_key, version_label, doc_type) DO UPDATE
                     SET pub_date      = EXCLUDED.pub_date,
                         url           = EXCLUDED.url,
+                        is_indexed    = EXCLUDED.is_indexed,
                         is_latest_pdf = EXCLUDED.is_latest_pdf,
                         xml_doc_id    = COALESCE(EXCLUDED.xml_doc_id,
                                                  regulatory_document_versions.xml_doc_id)
