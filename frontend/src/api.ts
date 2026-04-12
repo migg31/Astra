@@ -22,6 +22,28 @@ async function fetchJSON<T>(path: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+export interface CatalogEntry {
+  id: string;
+  name: string;
+  short: string;
+  category: "basic" | "ir" | "cs" | "amcgm";
+  domain: string;
+  description: string;
+  easa_url: string;
+  harvest_key: string | null;
+  indexed: boolean;
+  source_title: string | null;
+  source_root: string | null;
+  version_label: string | null;
+  pub_date: string | null;
+  amended_by: string | null;
+  node_count: number;
+}
+
+export function getCatalog(): Promise<CatalogEntry[]> {
+  return fetchJSON<CatalogEntry[]>("/api/admin/catalog");
+}
+
 export function listAllNodes(): Promise<NodeListResponse> {
   return fetchJSON<NodeListResponse>("/api/nodes?limit=10000");
 }

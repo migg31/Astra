@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-04-12
+
+### Added
+- **DocPicker**: Rich document selector dropdown integrated at the top of the sidebar, replacing the flat horizontal DocStrip. Displays the full EASA Regulatory Framework organized by domain (Initial Airworthiness, Continuing Airworthiness, Air Operations, Aircrew, Aerodromes) with color-coded section headers and node counts per indexed document.
+- **Doc Info Page**: When no article is selected (or on first load after switching document), `ArticlePanel` now renders a document overview page showing domain, short name, full name, description, version, publication date, and a link to the EASA website.
+- **Auto-select on document switch**: Switching document via the DocPicker now automatically selects the first IR node of the new document, ensuring the article panel is never stale.
+- **Catalog shared state**: `getCatalog()` is now fetched once in `App` and passed as a prop to `NavigatePanel`, `TreePanel` (DocPicker), and `ArticlePanel` — eliminating duplicate API calls.
+
+### Changed
+- **Consult layout**: Removed the `DocStrip` horizontal tab bar. The 3-column grid (`TreePanel` / `ArticlePanel` / `NeighborsPanel`) now renders directly under the topbar.
+- **NavigatePanel**: Removed internal `getCatalog()` fetch — now receives `catalog` as a prop from `App`.
+- **NeighborsPanel v2**: Redesigned with collapsible relation groups (▼/▶), color-coded relation badges (`Implements`, `Acceptable Means`, `Guidance`, `References`, `Requires`…), and directional icons (↗ outgoing / ↙ incoming).
+- **TreePanel**: Document selector removed from sidebar — replaced by DocPicker at the top.
+
+### Removed
+- `DocStrip.tsx` component (superseded by DocPicker inside TreePanel).
+
 ## [0.3.0] - 2026-04-12
 
 ### Added

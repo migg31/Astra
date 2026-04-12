@@ -77,6 +77,7 @@ class TopicRow:
     entry_into_force_date: str | None
     regulatory_source: str | None
     type_of_content: str | None
+    amended_by: str | None
     heading_stack: tuple[str, ...]
 
 
@@ -199,6 +200,7 @@ def _walk_toc(toc_element: etree._Element) -> list[TopicRow]:
                     entry_into_force_date=el.get("EntryIntoForceDate") or None,
                     regulatory_source=el.get("RegulatorySource") or None,
                     type_of_content=el.get("TypeOfContent") or None,
+                    amended_by=el.get("AmendedBy") or None,
                     heading_stack=tuple(stack),
                 )
             )
@@ -445,22 +447,62 @@ def parse_easa_xml(xml_path: Path) -> ParseResult:
 
     converter = HtmlConverter(image_rid_map)
 
-    # Version extraction
-    source_version = None
-    if source_title:
-        version_match = re.search(r"(?:Revision|Issue|Amendment)\s+(\d+)", source_title, re.IGNORECASE)
-        if version_match:
-            source_version = version_match.group(0)
-
     # Detect if this is a CS document (CS-25, CS-ACNS, etc.) to set default node type
     default_node_type: NodeType = "CS" if source_title and re.search(r"\bCS[- ]", source_title) else "IR"
 
     rows = _walk_toc(toc_element)
-    
+
+    # Extract source_version: the highest-numbered Amendment/Revision/Issue across all topics.
+    # "Initial issue" is skipped — it just means the article hasn't been amended since publication.
+    from collections import Counter
+    source_version: str | None = None
+    best_num = -1
+    best_label = None
+    for r in rows:
+        if not r.amended_by:
+            continue
+        for token in r.amended_by.split(";"):
+            token = token.strip()
+            vm = re.search(r"(Amendment|Revision|Issue)\s+(\d+)", token, re.IGNORECASE)
+            if vm:
+                n = int(vm.group(2))
+                if n > best_num:
+                    best_num = n
+                    best_label = f"{vm.group(1).capitalize()} {n}"
+    source_version = best_label
+    # Fallback: document title
+    if not source_version and source_title:
+        vm = re.search(r"(?:Revision|Issue|Amendment)\s+\d+", source_title, re.IGNORECASE)
+        if vm:
+            source_version = vm.group(0)
+
+    # Extract most recent EntryIntoForceDate for the document-level pub_time.
+    # A single attribute may contain multiple semicolon-separated dates
+    # e.g. "22 February, 2021; 22 February, 2023" — split all of them.
+    from datetime import datetime as _dt
+    all_date_tokens: list[str] = []
+    for r in rows:
+        if r.entry_into_force_date:
+            for token in r.entry_into_force_date.split(";"):
+                token = token.strip()
+                if re.match(r"\d+ \w+, \d{4}", token):
+                    all_date_tokens.append(token)
+    source_pub_time: _dt | None = None
+    if all_date_tokens:
+        def _safe_parse(s: str) -> _dt:
+            try:
+                return _dt.strptime(s, "%d %B, %Y")
+            except ValueError:
+                return _dt.min
+        latest_str = max(all_date_tokens, key=_safe_parse)
+        parsed = _safe_parse(latest_str)
+        if parsed != _dt.min:
+            source_pub_time = parsed
+
     result = ParseResult(
         source_document_title=source_title,
         source_version=source_version,
-        source_pub_time=None,
+        source_pub_time=source_pub_time,
     )
 
     nodes_by_ref: dict[tuple[str, str], ParsedNode] = {}

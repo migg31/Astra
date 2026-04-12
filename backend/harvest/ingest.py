@@ -27,9 +27,14 @@ REGULATORY_SOURCES = {
         "url": "https://www.easa.europa.eu/en/downloads/136660/en",
         "external_id": "easa-part21",
     },
+    "part26": {
+        "name": "Part 26 — Additional Airworthiness Specifications",
+        "url": "https://www.easa.europa.eu/en/downloads/136670/en",
+        "external_id": "easa-part26",
+    },
     "continuing-airworthiness": {
-        "name": "Continuing Airworthiness (M, 145, 66)",
-        "url": "https://www.easa.europa.eu/en/downloads/136681/en",
+        "name": "Continuing Airworthiness (M, 145, 66, CAMO)",
+        "url": "https://www.easa.europa.eu/en/downloads/136699/en",
         "external_id": "easa-airworthiness",
     },
     "air-operations": {
@@ -52,10 +57,10 @@ REGULATORY_SOURCES = {
         "url": "https://www.easa.europa.eu/en/downloads/136674/en",
         "external_id": "easa-csacns",
     },
-    "cs-awo": {
-        "name": "CS-AWO — All Weather Operations",
+    "aerodromes": {
+        "name": "Aerodromes (ADR)",
         "url": "https://www.easa.europa.eu/en/downloads/136677/en",
-        "external_id": "easa-csawo",
+        "external_id": "easa-aerodromes",
     }
     }
 
@@ -64,20 +69,37 @@ SOURCE_FORMAT = "MIXED"
 SOURCE_FREQUENCY = "monthly"
 
 
-def upsert_source(cur, name: str, url: str) -> str:
-    cur.execute(
-        """
-        INSERT INTO harvest_sources (name, base_url, format, frequency, last_sync_at)
-        VALUES (%s, %s, %s, %s, NOW())
-        ON CONFLICT (name) DO UPDATE
-            SET base_url     = EXCLUDED.base_url,
-                format       = EXCLUDED.format,
-                frequency    = EXCLUDED.frequency,
-                last_sync_at = NOW()
-        RETURNING source_id
-        """,
-        (name, url, SOURCE_FORMAT, SOURCE_FREQUENCY),
-    )
+def upsert_source(cur, name: str, url: str, external_id: str | None = None) -> str:
+    if external_id:
+        # Prefer upsert by external_id to avoid duplicates on rename
+        cur.execute(
+            """
+            INSERT INTO harvest_sources (external_id, name, base_url, format, frequency, last_sync_at)
+            VALUES (%s, %s, %s, %s, %s, NOW())
+            ON CONFLICT (external_id) DO UPDATE
+                SET name         = EXCLUDED.name,
+                    base_url     = EXCLUDED.base_url,
+                    format       = EXCLUDED.format,
+                    frequency    = EXCLUDED.frequency,
+                    last_sync_at = NOW()
+            RETURNING source_id
+            """,
+            (external_id, name, url, SOURCE_FORMAT, SOURCE_FREQUENCY),
+        )
+    else:
+        cur.execute(
+            """
+            INSERT INTO harvest_sources (name, base_url, format, frequency, last_sync_at)
+            VALUES (%s, %s, %s, %s, NOW())
+            ON CONFLICT (name) DO UPDATE
+                SET base_url     = EXCLUDED.base_url,
+                    format       = EXCLUDED.format,
+                    frequency    = EXCLUDED.frequency,
+                    last_sync_at = NOW()
+            RETURNING source_id
+            """,
+            (name, url, SOURCE_FORMAT, SOURCE_FREQUENCY),
+        )
     return cur.fetchone()[0]
 
 
@@ -90,22 +112,28 @@ def upsert_document(
     content_hash: str,
     raw_path: str,
     version_label: str | None = None,
+    pub_date=None,
+    amended_by: str | None = None,
 ) -> str:
     cur.execute(
         """
         INSERT INTO harvest_documents
-            (source_id, external_id, title, url, content_hash, raw_path, version_label)
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
+            (source_id, external_id, title, url, content_hash, raw_path,
+             version_label, pub_date, amended_by)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (source_id, external_id) DO UPDATE
             SET title         = EXCLUDED.title,
                 url           = EXCLUDED.url,
                 content_hash  = EXCLUDED.content_hash,
                 raw_path      = EXCLUDED.raw_path,
                 version_label = EXCLUDED.version_label,
+                pub_date      = EXCLUDED.pub_date,
+                amended_by    = EXCLUDED.amended_by,
                 fetched_at    = NOW()
         RETURNING doc_id
         """,
-        (source_id, external_id, title, url, content_hash, raw_path, version_label),
+        (source_id, external_id, title, url, content_hash, raw_path,
+         version_label, pub_date, amended_by),
     )
     return cur.fetchone()[0]
 
@@ -197,7 +225,7 @@ def ingest(xml_path: Path, *, source_name: str, source_url: str, external_id: st
 
     with psycopg2.connect(settings.database_url_sync) as conn:
         with conn.cursor() as cur:
-            source_id = upsert_source(cur, source_name, source_url)
+            source_id = upsert_source(cur, source_name, source_url, external_id=external_id)
             doc_id = upsert_document(
                 cur,
                 source_id=source_id,
@@ -207,6 +235,8 @@ def ingest(xml_path: Path, *, source_name: str, source_url: str, external_id: st
                 content_hash=content_hash,
                 raw_path=str(xml_path.resolve()),
                 version_label=result.source_version,
+                pub_date=result.source_pub_time.date() if result.source_pub_time else None,
+                amended_by=result.source_version,
             )
             node_map = upsert_nodes(cur, doc_id, result)
             edges_inserted = upsert_edges(cur, node_map, result)

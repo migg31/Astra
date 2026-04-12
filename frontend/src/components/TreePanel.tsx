@@ -1,11 +1,121 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { CatalogEntry } from "../api";
 import type { DocumentInfo, NodeSummary, NodeType } from "../types";
 import type { SubpartGroup } from "../tree";
 
-interface Props {
+// ─── Domain palette (same as NavigatePanel) ───────────────────
+const DOMAIN_META: Record<string, { bg: string; text: string; border: string; label: string }> = {
+  "framework":                { bg: "#1e293b", text: "#f1f5f9",  border: "#334155", label: "Framework" },
+  "initial-airworthiness":    { bg: "#78350f", text: "#fde68a",  border: "#d97706", label: "Initial Airworthiness" },
+  "avionics":                 { bg: "#78350f", text: "#fde68a",  border: "#d97706", label: "Initial Airworthiness" },
+  "continuing-airworthiness": { bg: "#1e3a8a", text: "#dbeafe",  border: "#2563eb", label: "Continuing Airworthiness" },
+  "air-operations":           { bg: "#4c1d95", text: "#e9d5ff",  border: "#7c3aed", label: "Air Operations" },
+  "aircrew":                  { bg: "#0c4a6e", text: "#bae6fd",  border: "#0284c7", label: "Aircrew" },
+  "aerodromes":               { bg: "#134e4a", text: "#99f6e4",  border: "#14b8a6", label: "Aerodromes" },
+};
+const DOMAIN_ORDER = ["framework","initial-airworthiness","continuing-airworthiness","air-operations","aircrew","aerodromes"];
+function domainMeta(d: string) { return DOMAIN_META[d] ?? DOMAIN_META["framework"]; }
+
+// ─── DocPicker component ──────────────────────────────────────
+interface PickerProps {
+  catalog: CatalogEntry[];
   documents: DocumentInfo[];
   selectedSource: string | null;
   onSelectSource: (source: string) => void;
+}
+function DocPicker({ catalog, documents, selectedSource, onSelectSource }: PickerProps) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handle = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, [open]);
+
+  const activeEntry = catalog.find((e) => e.source_root === selectedSource);
+  const activeMeta = activeEntry ? domainMeta(activeEntry.domain) : domainMeta("framework");
+  const activeDoc = documents.find((d) => d.source === selectedSource);
+
+  // Group catalog by canonical domain
+  const byDomain = new Map<string, CatalogEntry[]>();
+  for (const e of catalog) {
+    const key = e.domain === "avionics" ? "initial-airworthiness" : e.domain;
+    if (!byDomain.has(key)) byDomain.set(key, []);
+    byDomain.get(key)!.push(e);
+  }
+  const docByRoot = new Map(documents.map((d) => [d.source, d]));
+
+  return (
+    <div className="dp-wrapper" ref={ref}>
+      {/* Trigger */}
+      <button
+        className="dp-trigger"
+        style={{ borderColor: activeMeta.border, background: activeMeta.bg, color: activeMeta.text }}
+        onClick={() => setOpen(!open)}
+      >
+        <span className="dp-trigger-dot" style={{ background: activeMeta.text }} />
+        <span className="dp-trigger-label">
+          {activeEntry?.short ?? activeDoc?.label ?? "Select document"}
+        </span>
+        <span className="dp-trigger-count">
+          {activeDoc?.nodeCount ?? ""}
+        </span>
+        <span className="dp-trigger-chevron">{open ? "▲" : "▼"}</span>
+      </button>
+
+      {/* Dropdown */}
+      {open && (
+        <div className="dp-dropdown">
+          <div className="dp-dropdown-title">EASA Regulatory Framework</div>
+          <div className="dp-dropdown-body">
+            {DOMAIN_ORDER.filter((dk) => byDomain.has(dk)).map((dk) => {
+              const meta = domainMeta(dk);
+              const entries = byDomain.get(dk)!;
+              return (
+                <div key={dk} className="dp-domain">
+                  <div className="dp-domain-header" style={{ background: meta.bg, color: meta.text }}>
+                    {meta.label}
+                  </div>
+                  {entries.map((entry) => {
+                    const doc = entry.source_root ? docByRoot.get(entry.source_root) : null;
+                    const isActive = entry.source_root === selectedSource;
+                    return (
+                      <button
+                        key={entry.id}
+                        className={"dp-item" + (isActive ? " is-active" : "") + (!entry.indexed ? " is-unindexed" : "")}
+                        style={isActive ? { borderLeftColor: meta.border } : {}}
+                        onClick={() => { if (entry.source_root && doc) { onSelectSource(entry.source_root); setOpen(false); } }}
+                        disabled={!entry.indexed || !entry.source_root}
+                        title={!entry.indexed ? "Not indexed" : entry.name}
+                      >
+                        <span className="dp-item-short" style={isActive ? { color: meta.border } : {}}>
+                          {entry.short}
+                        </span>
+                        <span className="dp-item-name">
+                          {entry.name.replace(/^[^\u2014]+\u2014\s*/, "")}
+                        </span>
+                        {entry.indexed && doc
+                          ? <span className="dp-item-count">{doc.nodeCount}</span>
+                          : <span className="dp-item-na">—</span>
+                        }
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface Props {
   /** Types present in the selected document — provided by App so pills never vanish on deselect. */
   availableTypes: NodeType[];
   activeTypes: Set<NodeType>;
@@ -15,12 +125,14 @@ interface Props {
   onSelect: (node: NodeSummary) => void;
   searchQuery: string;
   onSearchChange: (q: string) => void;
+  // DocPicker props
+  catalog: CatalogEntry[];
+  documents: DocumentInfo[];
+  selectedSource: string | null;
+  onSelectSource: (source: string) => void;
 }
 
 export function TreePanel({
-  documents,
-  selectedSource,
-  onSelectSource,
   availableTypes,
   activeTypes,
   onToggleType,
@@ -29,6 +141,10 @@ export function TreePanel({
   onSelect,
   searchQuery,
   onSearchChange,
+  catalog,
+  documents,
+  selectedSource,
+  onSelectSource,
 }: Props) {
   const isSearching = searchQuery.trim().length > 0;
 
@@ -61,23 +177,13 @@ export function TreePanel({
 
   return (
     <nav className="tree-panel">
-      {/* ── Document selector ── */}
-      {documents.length > 0 && (
-        <div className="tree-doc-list">
-          <div className="tree-section-label">Documents</div>
-          {documents.map((doc) => (
-            <button
-              key={doc.source}
-              className={`tree-doc-item${doc.source === selectedSource ? " is-active" : ""}`}
-              onClick={() => onSelectSource(doc.source)}
-              title={doc.source}
-            >
-              <span className="tree-doc-label">{doc.label}</span>
-              <span className="tree-doc-count">{doc.nodeCount}</span>
-            </button>
-          ))}
-        </div>
-      )}
+      {/* ── DocPicker ── */}
+      <DocPicker
+        catalog={catalog}
+        documents={documents}
+        selectedSource={selectedSource}
+        onSelectSource={onSelectSource}
+      />
 
       {/* ── Type filters ── */}
       {availableTypes.length > 1 && (

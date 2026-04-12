@@ -1,4 +1,4 @@
-# Astra (v0.3.0)
+# Astra (v0.4.0)
 
 Aviation Type Certification expertise platform for EASA Part 21 professionals.
 
@@ -11,14 +11,15 @@ Full-stack application covering HARVEST, EXPLORE, and **ASK (RAG)** layers.
 | HARVEST | ✅ | EASA XML parser — Part 21 + CS-25 (836 nodes) + CS-ACNS (501 nodes) |
 | DATA | ✅ | PostgreSQL (Structured) + ChromaDB (Vector) |
 | KNOWLEDGE | ✅ | 5 495+ regulatory nodes (IR / AMC / GM / CS), 2 600+ edges |
-| EXPLORE UI | ✅ | React 3-panel: tree (Subpart → Section → Article) / article / neighbors |
+| EXPLORE UI | ✅ | React 3-panel: DocPicker sidebar / article (with doc info page) / collapsible neighbors |
 | ASK UI | ✅ | RAG-based AI assistant with anti-hallucination safeguards |
 | ADMIN | ✅ | Admin Console for system health, stats, and harvester control |
 
 ### Key Features
 - **Admin Console**: Real-time monitoring of PostgreSQL, ChromaDB, and Ollama (Mistral/Nomic).
 - **Interactive Harvester**: Trigger regulatory sync directly from the UI.
-- **Regulatory Explorer**: Tree navigation with full HTML rendering and clickable cross-references.
+- **Regulatory Explorer**: DocPicker sidebar (EASA framework by domain), tree navigation, HTML article rendering with clickable cross-references, and a doc info page on first load.
+- **Neighbors Panel v2**: Collapsible relation groups with directional icons and color-coded badges.
 - **AI Assistant**: Query Part 21 using natural language with strict sourcing and disclaimers.
 
 ## Prerequisites
@@ -86,7 +87,7 @@ backend/
 
 frontend/
 └── src/
-    ├── components/   ArticlePanel, TreePanel, NeighborsPanel
+    ├── components/   ArticlePanel, TreePanel (DocPicker), NeighborsPanel, NavigatePanel
     ├── api.ts        HTTP client
     ├── tree.ts       Tree grouping logic
     └── types.ts      TypeScript interfaces

@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { getGraph, getNeighbors, getNode, listAllNodes } from "./api";
+import { getCatalog, getGraph, getNeighbors, getNode, listAllNodes } from "./api";
+import type { CatalogEntry } from "./api";
 import { AdminConsole } from "./components/AdminConsole";
 import { ArticlePanel } from "./components/ArticlePanel";
 import { AskPanel } from "./components/AskPanel";
 import { MapPanel } from "./components/MapPanel";
+import { NavigatePanel } from "./components/NavigatePanel";
 import { NeighborsPanel } from "./components/NeighborsPanel";
 import { TreePanel } from "./components/TreePanel";
 import { articleCode, buildDocuments, buildTree, typeOrder } from "./tree";
@@ -16,11 +18,12 @@ import type {
   NodeType,
 } from "./types";
 
-type AppMode = "explore" | "ask" | "map";
+type AppMode = "navigate" | "consult" | "ask" | "map";
 
 export default function App() {
-  const [mode, setMode] = useState<AppMode>("explore");
+  const [mode, setMode] = useState<AppMode>("navigate");
   const [graphData, setGraphData] = useState<GraphData | null>(null);
+  const [catalog, setCatalog] = useState<CatalogEntry[]>([]);
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [allNodes, setAllNodes] = useState<NodeSummary[] | null>(null);
   const [rootError, setRootError] = useState<string | null>(null);
@@ -38,6 +41,11 @@ export default function App() {
   const [activeTypes, setActiveTypes] = useState<Set<NodeType>>(
     new Set(["IR", "AMC", "GM", "CS"])
   );
+
+  // ── Load catalog ──
+  useEffect(() => {
+    getCatalog().then(setCatalog).catch(console.error);
+  }, []);
 
   // ── Load nodes ──
   useEffect(() => {
@@ -152,16 +160,23 @@ export default function App() {
     }
   }
 
+  /** Called from NavigatePanel when user clicks an indexed doc → switch to Consult.
+   *  source is the exact hierarchy_path root (source_root from catalog API). */
+  function handleNavigateToSource(source: string) {
+    handleSelectSource(source);
+    setMode("consult");
+  }
+
   function handleNavigateByRef(refCode: string) {
     if (!allNodes) return;
     const node = allNodes.find((n) => n.reference_code === refCode);
-    if (node) { setSelected(node); setMode("explore"); }
+    if (node) { setSelected(node); setMode("consult"); }
   }
 
   function handleNavigateById(nodeId: string) {
     if (!allNodes) return;
     const node = allNodes.find((n) => n.node_id === nodeId);
-    if (node) { setSelected(node); setMode("explore"); }
+    if (node) { setSelected(node); setMode("consult"); }
   }
 
   function handleToggleType(type: NodeType) {
@@ -177,6 +192,14 @@ export default function App() {
   function handleSelectSource(source: string) {
     setSelectedSource(source);
     setSearchQuery("");
+    // Auto-select the first IR node of the new document
+    if (allNodes) {
+      const docNodes = allNodes.filter(
+        (n) => n.hierarchy_path.split(" / ")[0] === source && n.node_type !== "GROUP"
+      );
+      const firstIR = docNodes.find((n) => n.node_type === "IR") ?? docNodes[0] ?? null;
+      setSelected(firstIR);
+    }
   }
 
   // ── Render ──
@@ -200,10 +223,16 @@ export default function App() {
         <span className="app-brand">Astra</span>
         <div className="app-tabs">
           <button
-            className={"app-tab" + (mode === "explore" ? " is-active" : "")}
-            onClick={() => handleModeChange("explore")}
+            className={"app-tab" + (mode === "navigate" ? " is-active" : "")}
+            onClick={() => handleModeChange("navigate")}
           >
-            EXPLORE
+            NAVIGATE
+          </button>
+          <button
+            className={"app-tab" + (mode === "consult" ? " is-active" : "")}
+            onClick={() => handleModeChange("consult")}
+          >
+            CONSULT
           </button>
           <button
             className={"app-tab" + (mode === "ask" ? " is-active" : "")}
@@ -236,12 +265,9 @@ export default function App() {
         </div>
       </nav>
 
-      {mode === "explore" && (
+      {mode === "consult" && (
         <div className="app-grid">
           <TreePanel
-            documents={documents}
-            selectedSource={selectedSource}
-            onSelectSource={handleSelectSource}
             availableTypes={availableTypes}
             activeTypes={activeTypes}
             onToggleType={handleToggleType}
@@ -250,6 +276,10 @@ export default function App() {
             onSelect={setSelected}
             searchQuery={searchQuery}
             onSearchChange={setSearchQuery}
+            documents={documents}
+            selectedSource={selectedSource}
+            onSelectSource={handleSelectSource}
+            catalog={catalog}
           />
           <ArticlePanel
             node={detail}
@@ -259,6 +289,7 @@ export default function App() {
             knownRefs={knownRefs}
             siblings={articleSiblings}
             onSelectSibling={setSelected}
+            catalogEntry={catalog.find((e) => e.source_root === selectedSource) ?? null}
           />
           <NeighborsPanel
             neighbors={neighbors}
@@ -271,6 +302,13 @@ export default function App() {
         <div className="app-ask">
           <AskPanel onNavigate={handleNavigateById} />
         </div>
+      )}
+      {mode === "navigate" && (
+        <NavigatePanel
+          catalog={catalog}
+          availableSources={new Set(documents.map((d) => d.source))}
+          onNavigateTo={handleNavigateToSource}
+        />
       )}
       {mode === "map" && (
         <MapPanel

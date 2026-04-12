@@ -18,6 +18,7 @@ from backend.harvest.ingest import (
     fetch_easa_xml,
     REGULATORY_SOURCES,
 )
+from backend.harvest.catalog import CATALOG
 from backend.rag.ingest_embeddings import main as run_embedding_pipeline
 from backend.rag.embedder import _get_client as get_ollama_client, EMBED_MODEL
 from backend.rag.responder import CHAT_MODEL
@@ -312,3 +313,87 @@ async def start_harvester(
 
     background_tasks.add_task(_run_harvester_task_cfg, src_cfg)
     return {"message": f"Harvester started for {src_cfg['name']}"}
+
+
+@router.get("/catalog")
+async def get_catalog(db: AsyncSession = Depends(get_session)):
+    """Return the full EASA regulatory catalog with live indexing status from DB."""
+    rows = await db.execute(text("""
+        SELECT
+            hd.title,
+            hd.version_label,
+            hd.pub_date,
+            hd.amended_by,
+            COUNT(rn.node_id) AS node_count,
+            MIN(SPLIT_PART(rn.hierarchy_path, ' / ', 1)) AS first_root
+        FROM harvest_documents hd
+        LEFT JOIN regulatory_nodes rn ON rn.source_doc_id = hd.doc_id
+        GROUP BY hd.title, hd.version_label, hd.pub_date, hd.amended_by
+    """))
+
+    # All indexed documents as list of dicts (preserve original title for frontend matching)
+    docs = [
+        {
+            "title_raw": row["title"] or "",
+            "title": (row["title"] or "").lower(),
+            "first_root": row["first_root"] or "",
+            "version_label": row["version_label"],
+            "pub_date": str(row["pub_date"]) if row["pub_date"] else None,
+            "amended_by": row["amended_by"],
+            "node_count": int(row["node_count"] or 0),
+        }
+        for row in rows.mappings()
+    ]
+
+    def match_doc(pattern: str) -> dict | None:
+        """Return first doc whose title matches the SQL ILIKE pattern (%-wildcard)."""
+        import re
+        # Convert SQL ILIKE pattern (%foo%bar%) to regex
+        regex = re.compile(
+            ".*".join(re.escape(p) for p in pattern.lower().split("%") if p),
+            re.IGNORECASE,
+        )
+        # Prefer docs with most nodes
+        candidates = [d for d in docs if regex.search(d["title"])]
+        if not candidates:
+            return None
+        return max(candidates, key=lambda d: d["node_count"])
+
+    # Pre-fetch per-Part node counts for entries with ref_code_pattern
+    part_counts: dict[str, int] = {}
+    for entry in CATALOG:
+        if entry.doc_title_pattern and entry.ref_code_pattern:
+            row = await db.execute(text("""
+                SELECT COUNT(rn.node_id)
+                FROM regulatory_nodes rn
+                JOIN harvest_documents hd ON hd.doc_id = rn.source_doc_id
+                WHERE hd.title ILIKE :title_pat
+                  AND rn.node_type != 'GROUP'
+                  AND rn.reference_code ~ :ref_pat
+            """), {"title_pat": entry.doc_title_pattern, "ref_pat": entry.ref_code_pattern})
+            part_counts[entry.id] = int(row.scalar() or 0)
+
+    result = []
+    for entry in CATALOG:
+        info: dict | None = None
+        if entry.doc_title_pattern:
+            info = match_doc(entry.doc_title_pattern)
+        # Use per-Part count when available, else fall back to full doc count
+        node_count = part_counts.get(entry.id, info["node_count"] if info else 0)
+        result.append({
+            "id": entry.id,
+            "name": entry.name,
+            "short": entry.short,
+            "category": entry.category,
+            "domain": entry.domain,
+            "description": entry.description,
+            "easa_url": entry.easa_url,
+            "indexed": info is not None and info["node_count"] > 0,
+            "source_title": info["title_raw"] if info else None,
+            "source_root": info["first_root"] if info else None,
+            "version_label": info["version_label"] if info else None,
+            "pub_date": info["pub_date"] if info else None,
+            "amended_by": info["amended_by"] if info else None,
+            "node_count": node_count,
+        })
+    return result

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import type { CatalogEntry } from "../api";
 import type { NodeDetail, NodeSummary, NodeType } from "../types";
 import { typeOrder } from "../tree";
 
@@ -11,6 +12,8 @@ interface Props {
   /** All IR/AMC/GM nodes sharing the same article code (includes current node). */
   siblings?: NodeSummary[] | null;
   onSelectSibling?: (node: NodeSummary) => void;
+  /** Catalog metadata for the currently selected document */
+  catalogEntry?: CatalogEntry | null;
 }
 
 // Matches any Part 21 article reference: 21.A.20, 21.B.80, 21.A.101A, etc.
@@ -81,6 +84,64 @@ function formatDate(iso: string): string {
   return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
+const DOMAIN_META: Record<string, { bg: string; text: string; label: string }> = {
+  "framework":                { bg: "#1e293b", text: "#f1f5f9",  label: "Framework" },
+  "initial-airworthiness":    { bg: "#78350f", text: "#fde68a",  label: "Initial Airworthiness" },
+  "avionics":                 { bg: "#78350f", text: "#fde68a",  label: "Initial Airworthiness" },
+  "continuing-airworthiness": { bg: "#1e3a8a", text: "#dbeafe",  label: "Continuing Airworthiness" },
+  "air-operations":           { bg: "#4c1d95", text: "#e9d5ff",  label: "Air Operations" },
+  "aircrew":                  { bg: "#0c4a6e", text: "#bae6fd",  label: "Aircrew" },
+  "aerodromes":               { bg: "#134e4a", text: "#99f6e4",  label: "Aerodromes" },
+};
+
+function DocInfoPage({ entry }: { entry: CatalogEntry | null }) {
+  if (!entry) {
+    return (
+      <main className="article-panel article-empty">
+        Select an article in the tree.
+      </main>
+    );
+  }
+  const meta = DOMAIN_META[entry.domain] ?? DOMAIN_META["framework"];
+  return (
+    <main className="article-panel doc-info-page">
+      <header className="doc-info-header" style={{ background: meta.bg, color: meta.text }}>
+        <div className="doc-info-domain">{meta.label}</div>
+        <div className="doc-info-short">{entry.short}</div>
+        <div className="doc-info-name">{entry.name}</div>
+      </header>
+      <div className="doc-info-body">
+        <p className="doc-info-desc">{entry.description}</p>
+        <div className="doc-info-chips">
+          {entry.version_label && (
+            <span className="doc-info-chip doc-info-chip--version">
+              {entry.version_label}
+            </span>
+          )}
+          {entry.pub_date && (
+            <span className="doc-info-chip doc-info-chip--date">
+              {formatDate(entry.pub_date)}
+            </span>
+          )}
+          {entry.node_count > 0 && (
+            <span className="doc-info-chip doc-info-chip--count">
+              {entry.node_count} nodes
+            </span>
+          )}
+        </div>
+        <a
+          href={entry.easa_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="doc-info-link"
+        >
+          Open on EASA website ↗
+        </a>
+      </div>
+    </main>
+  );
+}
+
 /** Group siblings by type, sorted IR→AMC→GM→CS. */
 function groupSiblingsByType(siblings: NodeSummary[]): Map<NodeType, NodeSummary[]> {
   const groups = new Map<NodeType, NodeSummary[]>();
@@ -93,7 +154,7 @@ function groupSiblingsByType(siblings: NodeSummary[]): Map<NodeType, NodeSummary
   return groups;
 }
 
-export function ArticlePanel({ node, loading, error, onNavigate, knownRefs, siblings, onSelectSibling }: Props) {
+export function ArticlePanel({ node, loading, error, onNavigate, knownRefs, siblings, onSelectSibling, catalogEntry }: Props) {
   const articleRef = useRef<HTMLElement>(null);
   const [expandedType, setExpandedType] = useState<NodeType | null>(null);
 
@@ -115,11 +176,7 @@ export function ArticlePanel({ node, loading, error, onNavigate, knownRefs, sibl
     return <main className="article-panel article-empty error">{error}</main>;
   }
   if (!node) {
-    return (
-      <main className="article-panel article-empty">
-        Select an article in the tree to see its content.
-      </main>
-    );
+    return <DocInfoPage entry={catalogEntry ?? null} />;
   }
 
   function handleArticleClick(e: React.MouseEvent<HTMLElement>) {
