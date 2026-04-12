@@ -42,6 +42,9 @@ class SystemStats(BaseModel):
     embeddings_count: int
     db_size_mb: float
     vector_size_mb: float
+    version_snapshots_count: int = 0
+    harvest_runs_count: int = 0
+    last_harvest_at: str | None = None
 
 class HealthStatus(BaseModel):
     postgres: bool
@@ -81,13 +84,21 @@ async def get_stats(db: AsyncSession = Depends(get_session)):
     except Exception:
         pass
         
+    # Versioning stats
+    snapshots = await db.scalar(text("SELECT COUNT(*) FROM regulatory_node_versions"))
+    runs = await db.scalar(text("SELECT COUNT(*) FROM document_harvest_runs"))
+    last_harvest = await db.scalar(text("SELECT MAX(fetched_at) FROM document_harvest_runs"))
+
     return SystemStats(
         nodes_count=nodes or 0,
         edges_count=edges or 0,
         documents_count=docs or 0,
         embeddings_count=embeds,
         db_size_mb=round(db_size or 0, 2),
-        vector_size_mb=round(vector_size_mb, 2)
+        vector_size_mb=round(vector_size_mb, 2),
+        version_snapshots_count=int(snapshots or 0),
+        harvest_runs_count=int(runs or 0),
+        last_harvest_at=last_harvest.isoformat() if last_harvest else None,
     )
 
 @router.get("/health", response_model=HealthStatus)

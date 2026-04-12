@@ -105,6 +105,9 @@ export interface SystemStats {
   embeddings_count: number;
   db_size_mb: number;
   vector_size_mb: number;
+  version_snapshots_count: number;
+  harvest_runs_count: number;
+  last_harvest_at: string | null;
 }
 
 export interface HealthStatus {

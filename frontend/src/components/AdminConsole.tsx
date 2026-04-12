@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from "react";
 import {
   createSource, deleteSource, getHarvesterStatus, getHealth, getStats,
-  getSystemConfig, listHarvesterSources, listSources, startHarvester, updateSource,
+  getSystemConfig, getVersionCheck, listHarvesterSources, listSources, startHarvester, updateSource,
 } from "../api";
+import type { VersionCheckResult } from "../api";
 import type { HealthStatus, IngestionStatus, RegulatorySource, SystemConfig, SystemStats } from "../types";
 
 interface AdminConsoleProps {
@@ -23,6 +24,9 @@ export function AdminConsole({ isOpen, onClose }: AdminConsoleProps) {
   const [editingSource, setEditingSource] = useState<RegulatorySource | null>(null);
   const [addingSource, setAddingSource] = useState(false);
   const [newSource, setNewSource] = useState({ name: "", base_url: "", external_id: "", format: "MIXED", frequency: "monthly", enabled: true });
+  const [versionChecks, setVersionChecks] = useState<VersionCheckResult[] | null>(null);
+  const [versionCheckLoading, setVersionCheckLoading] = useState(false);
+  const [versionCheckError, setVersionCheckError] = useState<string | null>(null);
 
   const refreshData = async () => {
     try {
@@ -53,6 +57,19 @@ export function AdminConsole({ isOpen, onClose }: AdminConsoleProps) {
       return () => clearInterval(interval);
     }
   }, [isOpen]);
+
+  const handleVersionCheck = async () => {
+    setVersionCheckLoading(true);
+    setVersionCheckError(null);
+    try {
+      const results = await getVersionCheck();
+      setVersionChecks(results);
+    } catch (err: any) {
+      setVersionCheckError(err.message);
+    } finally {
+      setVersionCheckLoading(false);
+    }
+  };
 
   const handleRunHarvester = async () => {
     try {
@@ -321,6 +338,81 @@ export function AdminConsole({ isOpen, onClose }: AdminConsoleProps) {
                 </div>
               )}
             </div>
+          </section>
+
+          <section className="admin-section">
+            <h3>Version Control</h3>
+            <div className="stats-grid" style={{ marginBottom: '1rem' }}>
+              <StatCard label="Snapshots" value={stats?.version_snapshots_count} icon="📸" />
+              <StatCard label="Harvest Runs" value={stats?.harvest_runs_count} icon="🔄" />
+              <StatCard
+                label="Last Harvest"
+                value={stats?.last_harvest_at
+                  ? new Date(stats.last_harvest_at).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                  : 'Never'}
+                icon="🕐"
+              />
+            </div>
+
+            <div style={{ marginBottom: '0.75rem', fontSize: '0.72rem', color: '#6b7280', lineHeight: 1.5 }}>
+              Snapshots are created automatically on each harvest run. Run a harvest to populate version history.
+              Use "Check EASA" to detect if newer versions are available online (no download — HTML only).
+            </div>
+
+            <button
+              className="harvester-run-btn"
+              onClick={handleVersionCheck}
+              disabled={versionCheckLoading}
+              style={{ marginBottom: '0.75rem' }}
+            >
+              {versionCheckLoading ? 'Checking EASA…' : '🔍 Check EASA for Newer Versions'}
+            </button>
+
+            {versionCheckError && (
+              <div className="ask-error" style={{ marginBottom: '0.5rem' }}>{versionCheckError}</div>
+            )}
+
+            {versionChecks !== null && (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.72rem' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid #e5e7eb', color: '#6b7280' }}>
+                    <th style={{ textAlign: 'left', padding: '0.3rem 0.4rem', fontWeight: 600 }}>Document</th>
+                    <th style={{ textAlign: 'left', padding: '0.3rem 0.4rem', fontWeight: 600 }}>Indexed</th>
+                    <th style={{ textAlign: 'left', padding: '0.3rem 0.4rem', fontWeight: 600 }}>Online</th>
+                    <th style={{ textAlign: 'center', padding: '0.3rem 0.4rem', fontWeight: 600 }}>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {versionChecks.map((vc) => (
+                    <tr key={vc.source_root} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                      <td style={{ padding: '0.3rem 0.4rem', color: '#111827', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                        title={vc.source_title}>
+                        {vc.source_title}
+                      </td>
+                      <td style={{ padding: '0.3rem 0.4rem', color: '#6b7280' }}>
+                        {vc.indexed_version ?? '—'}
+                      </td>
+                      <td style={{ padding: '0.3rem 0.4rem', color: '#6b7280' }}>
+                        {vc.latest_version ?? <span style={{ color: '#d1d5db' }}>not detected</span>}
+                      </td>
+                      <td style={{ padding: '0.3rem 0.4rem', textAlign: 'center' }}>
+                        {vc.is_outdated ? (
+                          <span style={{ background: '#fef9c3', color: '#92400e', border: '1px solid #fcd34d', borderRadius: 4, padding: '1px 6px', fontWeight: 700, fontSize: '0.65rem' }}>
+                            ⚠ Outdated
+                          </span>
+                        ) : vc.latest_version ? (
+                          <span style={{ background: '#dcfce7', color: '#15803d', border: '1px solid #86efac', borderRadius: 4, padding: '1px 6px', fontWeight: 700, fontSize: '0.65rem' }}>
+                            ✓ Up to date
+                          </span>
+                        ) : (
+                          <span style={{ color: '#d1d5db', fontSize: '0.65rem' }}>unknown</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </section>
         </div>
       </div>
