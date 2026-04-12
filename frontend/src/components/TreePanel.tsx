@@ -332,7 +332,7 @@ export function TreePanel({
             onClick={() => setShowHistory((v) => !v)}
           >
             <span className="tree-history-drawer-chevron">{showHistory ? "▼" : "▶"}</span>
-            <span className="tree-history-drawer-label">Historique des versions</span>
+            <span className="tree-history-drawer-label">Version history</span>
           </button>
           {showHistory && (
             <div className="tree-history-drawer-body">

@@ -31,10 +31,10 @@ export function DocumentHistoryPanel({ sourceKey, sourceLabel, onClose }: Props)
     <div className="dhl-panel">
       <div className="dhl-header">
         <span className="dhl-title">{sourceLabel}</span>
-        <button className="dhl-close" onClick={onClose}>✕ Fermer</button>
+        <button className="dhl-close" onClick={onClose}>✕ Close</button>
       </div>
 
-      {loading && <div className="dhl-state">Chargement…</div>}
+      {loading && <div className="dhl-state">Loading…</div>}
       {error   && <div className="dhl-state dhl-state--error">{error}</div>}
 
       {history && (
@@ -68,7 +68,7 @@ function VersionRow({ v }: { v: DocumentVersion }) {
             <span className="dhl-badge dhl-badge--count">{v.node_count} nodes</span>
           )}
           {v.is_indexed && !v.is_latest_pdf && (
-            <span className="dhl-badge dhl-badge--warn">⚠ pas la dernière</span>
+            <span className="dhl-badge dhl-badge--warn">⚠ not latest</span>
           )}
         </div>
       </div>
@@ -77,9 +77,9 @@ function VersionRow({ v }: { v: DocumentVersion }) {
       <span className="dhl-date">{formatDate(v.pub_date)}</span>
       <button
         className="dhl-link"
-        title="Télécharger depuis EASA"
+        title="Download from EASA"
         onClick={() => {
-          if (confirm(`Télécharger "${v.version_label}" depuis le site EASA ?`)) {
+          if (confirm(`Download "${v.version_label}" from the EASA website?`)) {
             window.open(v.pdf_url ?? v.url, "_blank", "noopener,noreferrer");
           }
         }}
