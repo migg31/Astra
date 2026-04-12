@@ -4,13 +4,15 @@ import type { AskResponse, SourceNode } from "../types";
 
 interface Props {
   onNavigate: (nodeId: string) => void;
+  sourceFilter?: string | null;
 }
 
-export function AskPanel({ onNavigate }: Props) {
+export function AskPanel({ onNavigate, sourceFilter }: Props) {
   const [question, setQuestion] = useState("");
   const [result, setResult] = useState<AskResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [restrictToSource, setRestrictToSource] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -19,7 +21,11 @@ export function AskPanel({ onNavigate }: Props) {
     setError(null);
     setResult(null);
     try {
-      const res = await askQuestion({ question: question.trim(), n_sources: 5 });
+      const res = await askQuestion({
+        question: question.trim(),
+        n_sources: 5,
+        source_filter: restrictToSource && sourceFilter ? sourceFilter : null,
+      });
       setResult(res);
     } catch (err) {
       setError((err as Error).message);
@@ -44,6 +50,17 @@ export function AskPanel({ onNavigate }: Props) {
           rows={3}
           disabled={loading}
         />
+        {sourceFilter && (
+          <label className="ask-scope-toggle">
+            <input
+              type="checkbox"
+              checked={restrictToSource}
+              onChange={(e) => setRestrictToSource(e.target.checked)}
+              disabled={loading}
+            />
+            <span>Restrict to <strong>{sourceFilter}</strong> only</span>
+          </label>
+        )}
         <button className="ask-btn" type="submit" disabled={loading || !question.trim()}>
           {loading ? "Searching…" : "Ask"}
         </button>

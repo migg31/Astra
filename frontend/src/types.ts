@@ -39,6 +39,7 @@ export interface EdgeOut {
 export interface AskRequest {
   question: string;
   n_sources?: number;
+  source_filter?: string | null;
 }
 
 export interface SourceNode {

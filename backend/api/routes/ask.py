@@ -2,9 +2,12 @@
 
 Hybrid retrieval:
   1. Vector search (semantic similarity via nomic-embed-text)
-  2. Keyword injection: any 21.X.XX article code mentioned in the question
+  2. Keyword injection: any EASA article code mentioned in the question
      is fetched directly from the DB and added to the context — this is the
      highest-signal hint and bypasses the French/English embedding gap.
+
+Optional `source_filter` restricts retrieval to a specific indexed document
+(e.g. "cs-25", "part21"). If omitted, all indexed documents are searched.
 """
 from __future__ import annotations
 
@@ -21,12 +24,19 @@ from backend.rag.store import count, query
 
 router = APIRouter(prefix="/api/ask", tags=["ask"])
 
-_ARTICLE_RE = re.compile(r"21\.[A-Z]\.\d+[A-Z]?")
+# Matches any EASA article code: 21.A.91, M.A.302, ACNS.B.GEN.1005, CS 25.1309
+_ARTICLE_RE = re.compile(
+    r"\b(?:(?:[A-Z]{1,6}\.){1,3}[A-Z0-9]+(?:\.[A-Z0-9]+)*|\d{2,}\.\d+(?:\.\d+)*)\b"
+)
 
 
 class AskRequest(BaseModel):
     question: str = Field(..., min_length=5, max_length=1000)
     n_sources: int = Field(6, ge=1, le=12)
+    source_filter: str | None = Field(
+        None,
+        description="Optional: restrict search to a specific source root (e.g. 'cs-25', 'part21').",
+    )
 
 
 class SourceNode(BaseModel):
@@ -44,22 +54,33 @@ class AskResponse(BaseModel):
     question: str
 
 
-def _fetch_by_codes(codes: list[str]) -> list[dict]:
-    """Fetch all nodes whose reference_code contains one of the article codes."""
+def _fetch_by_codes(codes: list[str], source_filter: str | None = None) -> list[dict]:
+    """Fetch all nodes whose reference_code matches one of the article codes."""
     if not codes:
         return []
     with psycopg2.connect(settings.database_url_sync) as conn:
         with conn.cursor() as cur:
             placeholders = ",".join(["%s"] * len(codes))
+            source_clause = ""
+            params: list = codes + ["|".join(re.escape(c) for c in codes)]
+            if source_filter:
+                source_clause = """
+                AND EXISTS (
+                    SELECT 1 FROM harvest_documents hd
+                    WHERE hd.doc_id = rn.source_doc_id
+                      AND hd.external_id ILIKE %s
+                )"""
+                params.append(f"%{source_filter}%")
             cur.execute(
                 f"""
-                SELECT node_id::text, node_type, reference_code, title,
-                       content_text, content_hash, hierarchy_path
-                FROM regulatory_nodes
-                WHERE reference_code = ANY(ARRAY[{placeholders}])
-                   OR reference_code ~* %s
+                SELECT rn.node_id::text, rn.node_type, rn.reference_code, rn.title,
+                       rn.content_text, rn.content_hash, rn.hierarchy_path
+                FROM regulatory_nodes rn
+                WHERE (rn.reference_code = ANY(ARRAY[{placeholders}])
+                   OR rn.reference_code ~* %s)
+                {source_clause}
                 """,
-                codes + ["|".join(re.escape(c) for c in codes)],
+                params,
             )
             rows = cur.fetchall()
     hits = []
@@ -92,14 +113,20 @@ async def ask(req: AskRequest) -> AskResponse:
     mentioned_codes = list(set(_ARTICLE_RE.findall(req.question)))
 
     # 2. Fetch those nodes directly (exact match — highest relevance)
-    keyword_hits = _fetch_by_codes(mentioned_codes)
+    keyword_hits = _fetch_by_codes(mentioned_codes, source_filter=req.source_filter)
     keyword_ids = {h["id"] for h in keyword_hits}
 
-    # 3. Vector search for the rest
+    # 3. Vector search — optionally filtered by source_doc_id via ChromaDB metadata
     n_vector = max(req.n_sources, req.n_sources + len(keyword_hits))
     q_embedding = embed(req.question)
-    vector_hits = [h for h in query(q_embedding, n_results=n_vector)
-                   if h["id"] not in keyword_ids]
+    chroma_where = {"source_root": req.source_filter} if req.source_filter else None
+    try:
+        vector_hits = [h for h in query(q_embedding, n_results=n_vector, where=chroma_where)
+                       if h["id"] not in keyword_ids]
+    except Exception:
+        # ChromaDB where filter fails if field absent in metadata — fall back to unfiltered
+        vector_hits = [h for h in query(q_embedding, n_results=n_vector)
+                       if h["id"] not in keyword_ids]
 
     # 4. Merge: keyword hits first, then vector hits up to n_sources total
     hits = keyword_hits + vector_hits

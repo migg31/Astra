@@ -20,14 +20,16 @@ from backend.rag.store import upsert, count
 def _fetch_nodes(cur) -> list[dict]:
     cur.execute(
         """
-        SELECT node_id::text, node_type, reference_code, title,
-               content_text, content_hash, hierarchy_path,
-               regulatory_source, applicability_date
-        FROM regulatory_nodes
-        WHERE node_type != 'GROUP'
-          AND content_text IS NOT NULL
-          AND content_text != ''
-        ORDER BY hierarchy_path, reference_code
+        SELECT rn.node_id::text, rn.node_type, rn.reference_code, rn.title,
+               rn.content_text, rn.content_hash, rn.hierarchy_path,
+               rn.regulatory_source, rn.applicability_date,
+               COALESCE(hd.external_id, '') AS source_root
+        FROM regulatory_nodes rn
+        LEFT JOIN harvest_documents hd ON hd.doc_id = rn.source_doc_id
+        WHERE rn.node_type != 'GROUP'
+          AND rn.content_text IS NOT NULL
+          AND rn.content_text != ''
+        ORDER BY rn.hierarchy_path, rn.reference_code
         """
     )
     cols = [d[0] for d in cur.description]
@@ -78,6 +80,7 @@ def main(on_progress=None) -> int:
                         "title":           node["title"] or "",
                         "hierarchy_path":  node["hierarchy_path"],
                         "content_hash":    node["content_hash"],
+                        "source_root":     node["source_root"],
                     },
                 )
         except Exception:
@@ -94,6 +97,7 @@ def main(on_progress=None) -> int:
                             "title":           node["title"] or "",
                             "hierarchy_path":  node["hierarchy_path"],
                             "content_hash":    node["content_hash"],
+                            "source_root":     node["source_root"],
                         },
                     )
                 except Exception:

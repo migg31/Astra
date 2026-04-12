@@ -497,6 +497,17 @@ body,
 .ask-btn:hover:not(:disabled) { background: #005691; }
 .ask-btn:disabled { opacity: 0.5; cursor: default; }
 
+.ask-scope-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  color: #4b5563;
+  cursor: pointer;
+  user-select: none;
+}
+.ask-scope-toggle input[type="checkbox"] { accent-color: #007FC2; cursor: pointer; }
+
 .ask-error {
   padding: 0.75rem 1rem;
   background: #fef2f2;

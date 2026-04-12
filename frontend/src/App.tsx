@@ -333,7 +333,7 @@ export default function App() {
       )}
       {mode === "ask" && (
         <div className="app-ask">
-          <AskPanel onNavigate={handleNavigateById} />
+          <AskPanel onNavigate={handleNavigateById} sourceFilter={selectedSource} />
         </div>
       )}
       {mode === "navigate" && (
