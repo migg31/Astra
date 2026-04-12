@@ -48,13 +48,15 @@ CS25_VERSIONS: list[dict] = [
     {"version_label": "Amendment 26",  "url": f"{EASA}/en/downloads/121128/en", "pub_date": date(2022,  7, 22), "doc_type": "pdf"},
     {"version_label": "Amendment 27",  "url": f"{EASA}/en/downloads/135090/en", "pub_date": date(2023,  4, 21), "doc_type": "pdf"},
     {"version_label": "Amendment 28",  "url": f"{EASA}/en/downloads/139073/en", "pub_date": date(2024,  1, 26), "doc_type": "pdf", "is_latest_pdf": True},
+    # XML Easy Access Rules (machine-readable) — corresponds to Am27 content
+    {"version_label": "Amendment 27",  "url": f"{EASA}/en/downloads/136662/en", "pub_date": date(2023,  4, 21), "doc_type": "xml"},
 ]
 
 CS25_SOURCE = {
     "source_key": "cs-25",
     "source_label": "CS-25 \u2014 Large Aeroplanes",
     "versions": CS25_VERSIONS,
-    "xml_external_id": None,  # No XML Easy Access Rules for CS-25 yet
+    "xml_external_id": "easa-cs25",
 }
 
 # ── CS-ACNS ───────────────────────────────────────────────────────────────────

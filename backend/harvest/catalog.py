@@ -188,7 +188,7 @@ CATALOG: list[CatalogEntry] = [
         domain="initial-airworthiness",
         description="Certification specifications for large aeroplanes (MTOW > 5 700 kg).",
         easa_url="https://www.easa.europa.eu/en/document-library/certification-specifications/cs-25-amendment-28",
-        doc_title_pattern="CS-25%",
+        doc_title_pattern="%CS-25%",
         harvest_key="cs-25",
     ),
     CatalogEntry(
