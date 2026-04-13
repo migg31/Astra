@@ -4,6 +4,38 @@ Objective: Enhance the precision, recall, and contextual depth of the EASA regul
 
 ---
 
+## 0. Current Design Weaknesses (v0.5.0)
+
+Before looking at solutions, it is essential to understand why the current RAG architecture is limited when handling complex aviation regulations.
+
+### Schematic Comparison: Current vs. Ideal
+
+**Current Flow (The "Naive" Approach):**
+```text
+[User Query] -> [Embedding] -> [Cosine Similarity] -> [Top 5 Hits] -> [LLM]
+                                     |
+                                     v
+                          ISSUE: Hard Truncation (2k chars)
+                          ISSUE: No Hierarchy Awareness
+                          ISSUE: Obsolete Versions Included
+```
+
+### Why it fails in Regulatory Contexts:
+
+1.  **Semantic Blindness (Hard Truncation):**
+    Currently, we cut articles at 2000 characters regardless of where a sentence ends.
+    *   *Result:* The vector might capture the middle of a rule but lose its specific applicability conditions (AMCs) located at the end of the block.
+2.  **Context Fragmentation (Hierarchy Loss):**
+    Regulations are hierarchical. A sentence like *"This paragraph applies to large airplanes"* is meaningless without knowing it belongs to *CS-25 Subpart B*.
+    *   *Result:* The retriever finds the "Rule" but the LLM cannot confirm which document it came from if the name isn't in the snippet.
+3.  **The "Noise" Problem (Flat Search):**
+    A simple vector search for "Landing Gear" might return results from CS-23 (Small planes), CS-25 (Large planes), and CS-29 (Rotorcraft) mixed together.
+    *   *Result:* The LLM might mix requirements from different certification specifications, leading to regulatory non-compliance in the answer.
+4.  **Version Drift:**
+    Without strict SQL filtering during retrieval, the vector store might return an older version of a rule if it is semantically closer to the query than the latest one.
+
+---
+
 ## PART A: Current Architecture Improvements & Implementation Plan
 
 ### 1. Implementation Roadmap
