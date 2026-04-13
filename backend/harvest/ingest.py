@@ -232,6 +232,20 @@ def upsert_nodes(
             template="(%s::node_type, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
         )
 
+    # ── 2b. Delete stale nodes (present in DB for this doc but absent from current batch) ──────
+    nodes_removed = 0
+    if is_latest and result.nodes:
+        current_keys = {(n.node_type, n.reference_code) for n in result.nodes}
+        cur.execute(
+            "SELECT node_type::text, reference_code, node_id FROM regulatory_nodes WHERE source_doc_id = %s",
+            (doc_id,),
+        )
+        stale_rows = [(r[0], r[1], str(r[2])) for r in cur.fetchall() if (r[0], r[1]) not in current_keys]
+        if stale_rows:
+            stale_ids = [r[2] for r in stale_rows]
+            cur.execute("DELETE FROM regulatory_nodes WHERE node_id = ANY(%s::uuid[])", (stale_ids,))
+            nodes_removed = len(stale_rows)
+
     # ── 3. Reload node_ids ────────────────────────────────────────────────
     cur.execute(
         "SELECT node_type::text, reference_code, node_id FROM regulatory_nodes"
@@ -240,7 +254,7 @@ def upsert_nodes(
 
     # ── 4. Build version snapshots ────────────────────────────────────────
     version_rows: list[tuple] = []
-    counters = {"added": 0, "modified": 0, "unchanged": 0}
+    counters = {"added": 0, "modified": 0, "unchanged": 0, "removed": nodes_removed}
 
     for n in result.nodes:
         key = (n.node_type, n.reference_code)

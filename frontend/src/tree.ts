@@ -35,6 +35,24 @@ export function articleCode(node: NodeSummary): string {
   // "Appendix X to GM/AMC/CS article_code" → extract the article code after "to GM/AMC/CS"
   const appMatch = node.reference_code.match(/\bto\s+(?:AMC\d*|GM\d*|CS)\s+([\w.]+)/i);
   if (appMatch) return appMatch[1].replace(/\([^)]*\).*$/, "").trim();
+
+  // CS-25 standalone appendices: reference_code is "Appendix N – title" with no parent ref.
+  // If hierarchy_path has a parent article segment (e.g. "AMC 25.1309"), group under it.
+  if (/^Appendix\b/i.test(node.reference_code)) {
+    const hparts = node.hierarchy_path.split(" / ");
+    // Walk backwards (skip the appendix itself) to find nearest ancestor that is an article code
+    for (let i = hparts.length - 2; i >= 1; i--) {
+      const seg = hparts[i];
+      // Skip heading-group segments ("Appendices", section headings, subpart headings)
+      if (/^(Appendices|Appendix)\s*$/i.test(seg)) continue;
+      if (/^(SUBPART|SECTION)\b/i.test(seg)) break;
+      if (/^(GENERAL|INSTRUMENTS|LIGHTS|SAFETY|MISCELLANEOUS|ELECTRICAL|PERFORMANCE|GROUND|FLIGHT|FUEL|OIL|COOLING|EXHAUST|POWERPLANT|FATIGUE|CONTROL|LANDING|PERSONNEL|EMERGENCY|VENTILATION|PRESSURI|FIRE|MARKING|OPERATING|AEROPLANE|SUPPLEMENTARY|Display|DATA LINK|VOICE)/i.test(seg)) break;
+      const code = seg.replace(/^(?:AMC\d*|GM\d*|CS)\s+/, "").replace(/\s*\(.*$/, "").trim();
+      if (/\d/.test(code) && !/^Appendix\b/i.test(code)) return code;
+    }
+    return "§Appendices";
+  }
+
   // Strip leading type prefix: "AMC1 ", "GM2 ", "CS ", "AMC ", "GM " …
   const bare = node.reference_code.replace(/^(?:AMC\d*|GM\d*|CS)\s+/, "");
   // Strip trailing sub-paragraph refs: "(a)", "(b)(1)", "(a);(b)" …
@@ -98,7 +116,13 @@ export function buildDocuments(nodes: NodeSummary[]): DocumentInfo[] {
 }
 
 function sortArticles(groups: ArticleGroup[]): ArticleGroup[] {
-  return groups.sort((a, b) => compareArticleCodes(a.articleCode, b.articleCode));
+  return groups.sort((a, b) => {
+    const aIsApp = a.articleCode === "§Appendices";
+    const bIsApp = b.articleCode === "§Appendices";
+    if (aIsApp && !bIsApp) return 1;
+    if (!aIsApp && bIsApp) return -1;
+    return compareArticleCodes(a.articleCode, b.articleCode);
+  });
 }
 
 function sortNodes(ns: NodeSummary[]): void {
@@ -122,10 +146,10 @@ function sortNodes(ns: NodeSummary[]): void {
  * Ranges per EASA CS-25 table of contents.
  */
 function cs25Subpart(code: string): string {
-  // Appendix J (APU turbine-engine): 25J... → "Appendices to CS-25"
-  if (/25J\d/i.test(code) || /AMC\s+25J/i.test(code)) return "Appendices to CS-25";
-  // Other lettered appendices (25A..., 25B...) → "Appendices to CS-25"
-  if (/25[A-IK-Z]\d/i.test(code)) return "Appendices to CS-25";
+  // 25J... = Subpart J APU articles (CS 25J901, CS 25J1011, AMC 25J...)
+  if (/\b25J\d/i.test(code)) return "Subpart J — Auxiliary Power Unit Installations";
+  // 25A... where A is a letter appendix prefix (not the subpart J articles)
+  if (/\b25[A-IK-Z]\d/i.test(code)) return "Appendices to CS-25";
   // AMC to Appendix... → "Appendices to CS-25"
   if (/^AMC\s+to\s+App/i.test(code)) return "Appendices to CS-25";
   // General AMCs: AMC 25-N, AMC No. → "General AMCs"
@@ -177,18 +201,33 @@ export function buildTree(nodes: NodeSummary[]): SubpartGroup[] {
     const root = parts[0] ?? "";
     const structuralParts = parts.length > 1 ? parts.slice(1) : parts;
 
-    // CS-25: derive subpart from article number (no SUBPART headers in PDF)
-    const isCS25 = /^CS-?25\b/i.test(root);
+    // CS-25: use hierarchy_path parts[1] as subpart when it's a SUBPART heading.
+    // Fall back to cs25Subpart() only for nodes without an explicit SUBPART in their path.
+    const isCS25 = /\bCS-?25\b/i.test(root);
+    const cs25PathSubpart = isCS25 && parts.length >= 2 && /^SUBPART\b/i.test(parts[1])
+      ? parts[1]
+      : undefined;
     const explicitSubpart = isCS25
       ? undefined
       : structuralParts.find((p) => /^\(?SUBPART/i.test(p));
     const subpartRaw = isCS25
-      ? cs25Subpart(articleCode(node))
+      ? (cs25PathSubpart ?? cs25Subpart(articleCode(node)))
       : (explicitSubpart ?? "Other");
-    // Find the section segment — only when subpart is explicit (not CS-25)
-    const sectionRaw = (!isCS25 && explicitSubpart)
-      ? (structuralParts.find((p) => /^SECTION\s+\d/i.test(p)) ?? "")
-      : ((!isCS25 && structuralParts.length > 1) ? structuralParts[1] : "");
+
+    // For CS-25: hierarchy_path is Doc / SUBPART / SECTION / article (4 parts)
+    // The section heading (e.g. "GENERAL", "INSTRUMENTS: INSTALLATION") is parts[2].
+    // Only use it as section when it's not a SUBPART header and not the article itself.
+    let sectionRaw: string;
+    if (isCS25) {
+      const candidate = parts.length >= 4 ? parts[2] : "";
+      const isSubpartSeg = /^\(?SUBPART/i.test(candidate);
+      const isArticleSeg = /^\d|^(?:AMC|GM|CS|IR)\b/i.test(candidate) || /^Appendix\b/i.test(candidate);
+      sectionRaw = (!isSubpartSeg && !isArticleSeg && candidate) ? candidate : "";
+    } else {
+      sectionRaw = explicitSubpart
+        ? (structuralParts.find((p) => /^SECTION\s+\d/i.test(p)) ?? "")
+        : (structuralParts.length > 1 ? structuralParts[1] : "");
+    }
 
     const subpartKey = canonicalLabel(subpartLabels, subpartRaw);
     const sectionKey = canonicalLabel(sectionLabels, sectionRaw);
@@ -250,12 +289,23 @@ export function buildTree(nodes: NodeSummary[]): SubpartGroup[] {
       sections.push(...merged);
     }
 
-    // Sort sections: unnamed first, then by name
+    // Sort sections by minimum article number they contain (= document order).
+    // Unnamed section ("") goes first; ties fall back to name localeCompare.
+    const minArticleNum = (s: SectionGroup): number => {
+      let min = Infinity;
+      for (const art of s.articles) {
+        // Concatenate all digit runs: "25.1305" → "251305", "21.A.91" → "2191"
+        const digits = art.articleCode.replace(/[^0-9]/g, "");
+        if (digits) min = Math.min(min, parseInt(digits, 10));
+      }
+      return min === Infinity ? 0 : min;
+    };
     sections.sort((a, b) => {
       if (!a.name && !b.name) return 0;
       if (!a.name) return -1;
       if (!b.name) return 1;
-      return a.name.localeCompare(b.name);
+      const diff = minArticleNum(a) - minArticleNum(b);
+      return diff !== 0 ? diff : a.name.localeCompare(b.name);
     });
 
     // Flat article list across all sections (for search results & leaf counts)

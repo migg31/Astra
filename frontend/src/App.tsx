@@ -31,6 +31,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState("");
 
   // Explorer state
+  const [pendingScrollNodeId, setPendingScrollNodeId] = useState<string | null>(null);
   const [selected, setSelected] = useState<NodeSummary | null>(null);
   const [detail, setDetail] = useState<NodeDetail | null>(null);
   const [neighbors, setNeighbors] = useState<NeighborsResponse | null>(null);
@@ -185,7 +186,12 @@ export default function App() {
   function handleNavigateById(nodeId: string) {
     if (!allNodes) return;
     const node = allNodes.find((n) => n.node_id === nodeId);
-    if (node) { setSelected(node); setMode("consult"); }
+    if (!node) return;
+    const nodeSource = node.hierarchy_path.split(" / ")[0];
+    if (nodeSource && nodeSource !== selectedSource) setSelectedSource(nodeSource);
+    setSelected(node);
+    setPendingScrollNodeId(nodeId);
+    setMode("consult");
   }
 
   function handleToggleType(type: NodeType) {
@@ -294,8 +300,7 @@ export default function App() {
         </div>
       )}
 
-      {mode === "consult" && (
-        <div className="app-grid" style={{ gridTemplateColumns: `${leftWidth}px 1fr 280px` }}>
+      <div className="app-grid" style={{ gridTemplateColumns: `${leftWidth}px 1fr 280px`, display: mode === "consult" ? undefined : "none" }}>
           <div style={{ position: "relative", height: "100%", overflow: "hidden" }}>
             <TreePanel
               availableTypes={availableTypes}
@@ -310,6 +315,8 @@ export default function App() {
               selectedSource={selectedSource}
               onSelectSource={handleSelectSource}
               catalog={catalog}
+              scrollToNodeId={pendingScrollNodeId}
+              onScrolled={() => setPendingScrollNodeId(null)}
             />
             <div className="resize-handle" onMouseDown={onDragStart} />
           </div>
@@ -330,16 +337,13 @@ export default function App() {
             onSelect={setSelected}
           />
         </div>
-      )}
-      {mode === "ask" && (
-        <div className="app-ask">
-          <AskPanel
-            onNavigate={handleNavigateById}
-            sourceFilter={catalog.find((e) => e.source_root === selectedSource)?.harvest_key ?? null}
-            sourceLabel={documents.find((d) => d.source === selectedSource)?.label ?? selectedSource}
-          />
-        </div>
-      )}
+      <div className="app-ask" style={{ display: mode === "ask" ? undefined : "none" }}>
+        <AskPanel
+          onNavigate={handleNavigateById}
+          sourceFilter={catalog.find((e) => e.source_root === selectedSource)?.harvest_key ?? null}
+          sourceLabel={documents.find((d) => d.source === selectedSource)?.label ?? selectedSource}
+        />
+      </div>
       {mode === "navigate" && (
         <NavigatePanel
           catalog={catalog}

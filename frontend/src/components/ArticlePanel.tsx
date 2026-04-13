@@ -3,6 +3,91 @@ import type { CatalogEntry, VersionCheckResult } from "../api";
 import type { NodeDetail, NodeSummary, NodeType } from "../types";
 import { typeOrder } from "../tree";
 
+/**
+ * Post-process EASA HTML: detect paragraph label level in flat <ol> items
+ * and inject easa-li-l1 / easa-li-l2 / easa-li-l3 / easa-li-l4 classes.
+ *
+ * EASA hierarchy (from PDF x-coordinates):
+ *   L1  (a) (b) (c) …          x=72   padding 0
+ *   L2  (1) (2) (3) …          x=100  padding 2.33rem
+ *   L3  (i) (ii) (iii) …       x=129  padding 4.75rem
+ *   L4  (A) (B) (C) …          x=157  padding 7.08rem
+ */
+function labelLevel(label: string, dotStyle = false): string {
+  const l = label.toLowerCase();
+  // Dot-style section numbers  1.  2.  13.  → L0 (flush, section heading)
+  if (dotStyle && /^\d+$/.test(label)) return "easa-li-l0";
+  // Dot-style letters  a.  b.  → L1
+  if (dotStyle && /^[a-z]$/.test(l)) return "easa-li-l1";
+  // Uppercase single letter → L4
+  if (/^[A-Z]$/.test(label)) return "easa-li-l4";
+  // Roman numerals → L3
+  if (/^(i{1,3}|iv|vi{0,3}|ix|xi{0,3})$/.test(l) && isNaN(Number(label))) return "easa-li-l3";
+  // Lowercase single letter → L1
+  if (/^[a-z]$/.test(l)) return "easa-li-l1";
+  // Number → L2
+  return "easa-li-l2";
+}
+
+/**
+ * Group consecutive <p> elements that start with an em-dash (— ) into a <ul>.
+ * These are bullet lists in the original PDF rendered as flat paragraphs.
+ */
+function groupDashLists(html: string): string {
+  // Match a <p...> that starts with — (em-dash, optionally nbsp before text)
+  const DASH_P = /(<p(?:[^>]*)>)\s*\u2014\s*([\s\S]*?)(<\/p>)/g;
+  // Replace all dash-paragraphs with a sentinel li, then wrap consecutive ones in <ul>
+  const withLi = html.replace(DASH_P, (_m, _open, content, _close) =>
+    `<li class="easa-dash-item">${content.trim()}</li>`
+  );
+  // Wrap consecutive <li class="easa-dash-item"> runs in <ul class="easa-dash-list">
+  return withLi.replace(
+    /(<li class="easa-dash-item">[\s\S]*?<\/li>)(\s*<li class="easa-dash-item">[\s\S]*?<\/li>)*/g,
+    (match) => `<ul class="easa-dash-list">${match}</ul>`
+  );
+}
+
+function injectEasaIndent(html: string): string {
+  // Step 1a: parenthesised labels  (a)  (1)  (i)  (A)
+  let lastLevel = "easa-li-l1";
+  let processed = html.replace(
+    /<li([^>]*)>(\s*)\(([a-zA-Z]+|[0-9]+)\)/g,
+    (_match, attrs, _ws, label) => {
+      const level = labelLevel(label);
+      lastLevel = level;
+      return `<li${attrs} class="${level}">(${label})`;
+    }
+  );
+
+  // Step 1b: dot-suffixed labels  a.  b.  1.  10.  — plain, in <em>, or in <strong>
+  // Pattern: <li...>(<em>|<strong>)?LABEL.(</em>|</strong>|&emsp;)
+  processed = processed.replace(
+    /<li([^>]*)>(\s*)(?:<(?:em|strong)>)?([a-zA-Z]|\d{1,2})\.<\/(?:em|strong)>|<li([^>]*)>(\s*)([a-zA-Z]|\d{1,2})\.(?=&emsp;)/g,
+    (match, a1, _w1, l1, a2, _w2, l2) => {
+      const attrs = a1 ?? a2 ?? "";
+      const label = l1 ?? l2 ?? "";
+      const level = labelLevel(label, true);
+      lastLevel = level;
+      // Reconstruct preserving original format (em tag already in original if a1 matched)
+      return match.replace(/<li([^>]*)>/, `<li${attrs} class="${level}">`);
+    }
+  );
+
+  // Step 2: indent <p> elements that sit between </ol> and <ol> (continuation paragraphs)
+  // They are body text of the last <li>, so they go one level deeper.
+  const LEVELS = ["easa-li-l0", "easa-li-l1", "easa-li-l2", "easa-li-l3", "easa-li-l4"];
+  const continuationLevel = LEVELS[Math.min(LEVELS.indexOf(lastLevel) + 1, LEVELS.length - 1)];
+  processed = processed.replace(
+    /<\/ol>\n(<p(?:[^>]*)>[^<]*<\/p>\n)<ol>/g,
+    (_match, para) => {
+      const indented = para.replace(/<p((?:[^>]*))>/, `<p$1 class="easa-continuation ${continuationLevel}">`);
+      return `</ol>\n${indented}<ol>`;
+    }
+  );
+
+  return processed;
+}
+
 interface Props {
   node: NodeDetail | null;
   loading: boolean;
@@ -48,6 +133,11 @@ function linkifyDom(
     if (!bareToFull.has(bare) || prio < (barePriority.get(bare) ?? 9)) {
       bareToFull.set(bare, full);
       barePriority.set(bare, prio);
+    }
+    // Also register prefixed base form: "AMC 25.1301(a)(2)" → key "AMC 25.1301"
+    const prefixedBase = full.replace(/\([^)]*\).*$/, "").trim();
+    if (prefixedBase !== full && !bareToFull.has(prefixedBase)) {
+      bareToFull.set(prefixedBase, full);
     }
   }
 
@@ -320,7 +410,7 @@ export function ArticlePanel({ node, loading, error, onNavigate, knownRefs, sibl
         <article
           ref={articleRef}
           className="article-html"
-          dangerouslySetInnerHTML={{ __html: node.content_html }}
+          dangerouslySetInnerHTML={{ __html: injectEasaIndent(groupDashLists(node.content_html)) }}
           onClick={handleArticleClick}
         />
       ) : (

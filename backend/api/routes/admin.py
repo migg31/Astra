@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.schemas import RegulatorySourceCreate, RegulatorySourceOut, RegulatorySourceUpdate
 from backend.database.connection import get_session
-from backend.rag.store import count as count_embeddings, _CHROMA_PATH
+from backend.rag.store import count as count_embeddings
 from backend.harvest.ingest import (
     ingest,
     fetch_easa_xml,
@@ -72,10 +72,13 @@ class SystemStats(BaseModel):
 
 class HealthStatus(BaseModel):
     postgres: bool
-    chroma: bool
+    pgvector: bool
     ollama_server: bool
     ollama_model_embed: bool
     ollama_model_chat: bool
+    ollama_server_error: str | None = None
+    ollama_model_embed_error: str | None = None
+    ollama_model_chat_error: str | None = None
 
 class SystemConfig(BaseModel):
     harvester_source_url: str
@@ -85,6 +88,9 @@ class SystemConfig(BaseModel):
     data_directory: str
     db_host: str
     ollama_base_url: str
+    chat_model: str
+    embed_model: str
+    chat_provider: str  # "local" | "groq" | "openai" | "other"
 
 @router.get("/stats", response_model=SystemStats)
 async def get_stats(db: AsyncSession = Depends(get_session)):
@@ -97,14 +103,14 @@ async def get_stats(db: AsyncSession = Depends(get_session)):
     # DB Size (approximate)
     db_size = await db.scalar(text("SELECT pg_database_size(current_database()) / 1024.0 / 1024.0"))
     
-    # Chroma stats
+    # pgvector stats
     embeds = 0
     vector_size_mb = 0.0
     try:
         embeds = count_embeddings()
-        if _CHROMA_PATH.exists():
-            total_size = sum(f.stat().st_size for f in _CHROMA_PATH.rglob('*') if f.is_file())
-            vector_size_mb = total_size / (1024 * 1024)
+        vector_size_mb = float(await db.scalar(text(
+            "SELECT pg_total_relation_size('node_embeddings') / 1024.0 / 1024.0"
+        )) or 0)
     except Exception:
         pass
         
@@ -135,35 +141,64 @@ async def check_health(db: AsyncSession = Depends(get_session)):
     except Exception:
         pass
 
-    chroma_ok = False
+    pgvector_ok = False
     try:
         count_embeddings()
-        chroma_ok = True
+        pgvector_ok = True
     except Exception:
         pass
 
+    # ── Embed check (always Ollama local) ────────────────────────────────────
     ollama_server_ok = False
     ollama_model_embed_ok = False
-    ollama_model_chat_ok = False
+    ollama_server_error: str | None = None
+    ollama_model_embed_error: str | None = None
     try:
-        client = get_ollama_client()
-        # Test basic connectivity to Ollama
-        models = client.models.list()
+        embed_client = get_ollama_client()
+        models = embed_client.models.list()
         ollama_server_ok = True
-        
-        # Check specific models
         model_ids = [m.id for m in models.data]
-        ollama_model_embed_ok = any(m == EMBED_MODEL or m.startswith(EMBED_MODEL + ":") for m in model_ids)
-        ollama_model_chat_ok = any(m == settings.ollama_model or m.startswith(settings.ollama_model + ":") for m in model_ids)
-    except Exception:
-        pass
+        if any(m == EMBED_MODEL or m.startswith(EMBED_MODEL + ":") for m in model_ids):
+            ollama_model_embed_ok = True
+        else:
+            ollama_model_embed_error = f"Model '{EMBED_MODEL}' not found. Available: {', '.join(model_ids[:5]) or 'none'}"
+    except Exception as e:
+        ollama_server_error = str(e)
+        ollama_model_embed_error = str(e)
+
+    # ── Chat check (may be cloud provider) ───────────────────────────────────
+    ollama_model_chat_ok = False
+    ollama_model_chat_error: str | None = None
+    chat_base = settings.ollama_base_url.lower()
+    is_local_chat = "localhost" in chat_base or "127.0.0.1" in chat_base
+    try:
+        from openai import OpenAI as _OAI
+        chat_client = _OAI(base_url=settings.ollama_base_url, api_key=settings.ollama_api_key)
+        if is_local_chat:
+            chat_model_ids = [m.id for m in chat_client.models.list().data]
+            if any(m == settings.ollama_model or m.startswith(settings.ollama_model + ":") for m in chat_model_ids):
+                ollama_model_chat_ok = True
+            else:
+                ollama_model_chat_error = f"Model '{settings.ollama_model}' not found. Available: {', '.join(chat_model_ids[:5]) or 'none'}"
+        else:
+            chat_client.chat.completions.create(
+                model=settings.ollama_model,
+                messages=[{"role": "user", "content": "ping"}],
+                max_tokens=1,
+            )
+            ollama_model_chat_ok = True
+    except Exception as e:
+        ollama_model_chat_error = str(e)
 
     return HealthStatus(
         postgres=postgres_ok,
-        chroma=chroma_ok,
+        pgvector=pgvector_ok,
         ollama_server=ollama_server_ok,
         ollama_model_embed=ollama_model_embed_ok,
-        ollama_model_chat=ollama_model_chat_ok
+        ollama_model_chat=ollama_model_chat_ok,
+        ollama_server_error=ollama_server_error,
+        ollama_model_embed_error=ollama_model_embed_error,
+        ollama_model_chat_error=ollama_model_chat_error,
     )
 
 @router.get("/config", response_model=SystemConfig)
@@ -177,6 +212,16 @@ async def get_config():
     # Use part21 as the default reference for config display
     default_source = REGULATORY_SOURCES["part21"]
     
+    base = settings.ollama_base_url.lower()
+    if "groq.com" in base:
+        provider = "groq"
+    elif "openai.com" in base:
+        provider = "openai"
+    elif "localhost" in base or "127.0.0.1" in base:
+        provider = "local"
+    else:
+        provider = "other"
+
     return SystemConfig(
         harvester_source_url=default_source["url"],
         harvester_name=default_source["name"],
@@ -184,7 +229,10 @@ async def get_config():
         harvester_format="MIXED",
         data_directory=str(Path("data").resolve()),
         db_host=db_url.hostname or "localhost",
-        ollama_base_url=OLLAMA_BASE_URL
+        ollama_base_url=OLLAMA_BASE_URL,
+        chat_model=settings.ollama_model,
+        embed_model=settings.embed_model,
+        chat_provider=provider,
     )
 
 @router.get("/harvester/status", response_model=IngestionStatus)
@@ -283,6 +331,38 @@ async def _run_harvester_task_multi(source_cfgs: list[dict]):
         finally:
             _status.is_running = False
             _status.current_source = None
+
+async def _run_embeddings_task():
+    """Background task: run embedding pipeline only (no harvest)."""
+    global _status
+    async with _lock:
+        _status.is_running = True
+        _status.error = None
+        _status.log_lines = []
+        _status.embed_done = 0
+        _status.embed_total = 0
+        loop = asyncio.get_running_loop()
+        try:
+            _log("=== Re-indexing vectors ===")
+            await loop.run_in_executor(None, lambda: run_embedding_pipeline(on_progress=_log))
+            _log("=== Vector re-index complete ===")
+        except Exception as e:
+            _status.error = str(e)
+            _log(f"ERROR: {e}")
+        finally:
+            _status.is_running = False
+            _status.current_source = None
+            _status.last_run_at = datetime.now(timezone.utc)
+
+
+@router.post("/embeddings/run", status_code=202)
+async def run_embeddings(background_tasks: BackgroundTasks):
+    """Trigger embedding re-indexing pipeline (no harvest)."""
+    if _status.is_running:
+        raise HTTPException(status_code=409, detail="A task is already running.")
+    background_tasks.add_task(_run_embeddings_task)
+    return {"message": "Embedding pipeline started."}
+
 
 # ── Regulatory Sources CRUD ──────────────────────────────────────────────────
 

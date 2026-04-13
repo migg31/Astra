@@ -40,12 +40,15 @@ ARTICLE_CODE_PATTERN = r"[A-Z0-9]+(?:[\.-][A-Z0-9]+)*(?:\([a-z0-9-]+\))*(?:;(?:\
 TITLE_RE = re.compile(
     r"""^\s*
     (?P<prefix>
-        (?:Appendix\s+[A-Z0-9]+\s+to\s+)?   # "Appendix A to AMC ..."
-        (?:AMC\s*No\.?\s*\d*\s+to\s+)?     # "AMC No. 1 to CS ..."
-        (?:AMC\s+to\s+)?                     # "AMC to CS ..."
-        (?:AMC\d*|GM\d*|CS)?                 # type prefix with optional variant number (AMC2, GM3…)
+        (?:Appendix\s+[A-Z0-9]+\s+to\s+)?        # "Appendix A to AMC ..."
+        (?:(?:AMC|GM)\s*No\.?\s*\d*\s+to\s+)?    # "AMC No. 1 to CS ..." / "GM No 1 to ..."
+        (?:AMC\s+to\s+)?                           # "AMC to CS ..."
+        # Type prefix + optional spaced variant digit (only when followed by a letter-led code)
+        # e.g. "AMC 1 ACNS.C.PBN.305" → prefix="AMC 1 ", code="ACNS.C.PBN.305"
+        # but NOT "AMC 21.A.101" → should match prefix="AMC", code="21.A.101"
+        (?:(?:AMC|GM)\s+\d+(?=\s+[A-Z])|AMC\d*|GM\d*|CS)?
         \s*
-        (?:CS\s+)?                           # optional "CS " between AMC/GM and the code
+        (?:CS\s+)?                                 # optional "CS " between AMC/GM and the code
     )
     (?P<code>""" + ARTICLE_CODE_PATTERN + r""")               # the reference code
     (?:\s+(?P<title>.*))?$
@@ -255,9 +258,9 @@ def _classify(title: str, default_node_type: NodeType = "IR") -> tuple[NodeType 
         # Try the main regex first
         m = TITLE_RE.match(title)
         if not m:
-            # Standalone appendix: treat as GM or AMC based on context
-            # For now, classify as the default type
-            return default_node_type, title.strip(), title.strip()
+            # Standalone appendix: these are typically appendices to AMC, not CS articles.
+            # Return "AMC" as the type; the caller may refine using TOC metadata.
+            return "AMC", title.strip(), title.strip()
     else:
         m = TITLE_RE.match(title)
         if not m:
@@ -279,7 +282,8 @@ def _classify(title: str, default_node_type: NodeType = "IR") -> tuple[NodeType 
             return "GM", app_ref, node_title
         if "AMC" in prefix:
             return "AMC", app_ref, node_title
-        return default_node_type, app_ref, node_title
+        # Appendix with no AMC/GM in prefix: default to AMC (not CS)
+        return "AMC", app_ref, node_title
     
     # Extract variant number (AMC2 → "2", GM3 → "3")
     if prefix.startswith("AMC"):
@@ -408,6 +412,58 @@ def _build_sdt_index_from_root(search_root: etree._Element) -> dict[str, etree._
     return index
 
 
+def _build_image_rid_map_flatopc(root: etree._Element) -> dict[str, str]:
+    """Build rId → data-URI map from a Flat-OPC pkg:package element.
+
+    The Flat-OPC format embeds images as base64 in pkg:binaryData inside
+    pkg:part elements. Relationships are stored in a separate pkg:part whose
+    name ends with document.xml.rels.
+    """
+    import base64
+
+    PKG = "http://schemas.microsoft.com/office/2006/xmlPackage"
+    REL = "http://schemas.openxmlformats.org/package/2006/relationships"
+    CT_MAP = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
+              "gif": "image/gif", "svg": "image/svg+xml"}
+
+    # Build name → base64 text for all media parts
+    media_b64: dict[str, str] = {}
+    for part in root.findall(f"{{{PKG}}}part"):
+        name = part.get(f"{{{PKG}}}name") or ""
+        if "/media/" not in name:
+            continue
+        bd = part.find(f"{{{PKG}}}binaryData")
+        if bd is not None and bd.text:
+            media_b64[name] = bd.text.strip()
+
+    # Find the document.xml.rels part and build rId → media path
+    rid_map: dict[str, str] = {}
+    for part in root.findall(f"{{{PKG}}}part"):
+        name = part.get(f"{{{PKG}}}name") or ""
+        if not name.endswith("document.xml.rels"):
+            continue
+        xmlData = part.find(f"{{{PKG}}}xmlData")
+        if xmlData is None:
+            continue
+        for rel in xmlData.iter():
+            if etree.QName(rel).localname != "Relationship":
+                continue
+            rid    = rel.get("Id") or ""
+            target = rel.get("Target") or ""
+            if not rid or not target:
+                continue
+            ext = Path(target).suffix.lower().lstrip(".")
+            if ext == "emf" or ext not in CT_MAP:
+                continue
+            # Normalise target to full package path
+            full_name = f"/word/{target}" if not target.startswith("/") else target
+            b64 = media_b64.get(full_name)
+            if b64:
+                ct = CT_MAP[ext]
+                rid_map[rid] = f"data:{ct};base64,{b64}"
+    return rid_map
+
+
 def parse_easa_xml(xml_path: Path) -> ParseResult:
     # ── Format detection ────────────────────────────────────────────────────
     if xml_path.suffix.lower() == ".docx":
@@ -419,7 +475,7 @@ def parse_easa_xml(xml_path: Path) -> ParseResult:
         sdt_index = _build_sdt_index_from_root(doc_root)
     else:  # Flat-OPC pkg:package XML (Part 21 format)
         root = etree.parse(str(xml_path)).getroot()
-        image_rid_map = {}
+        image_rid_map = _build_image_rid_map_flatopc(root)
 
         toc_elements = root.xpath("//*[local-name()='toc']")
         if not toc_elements:
@@ -511,6 +567,19 @@ def parse_easa_xml(xml_path: Path) -> ParseResult:
         node_type, code, clean_title = _classify(row.title, default_node_type)
         if node_type is None or code is None:
             continue
+
+        # Refine standalone Appendix type using TOC metadata (type_of_content / heading_stack)
+        # Only override if _classify didn't already resolve to AMC/GM (i.e. it fell back to default)
+        if row.title.strip().upper().startswith(("APPENDIX ", "APPENDIX\xa0")) and node_type == default_node_type:
+            toc = (row.type_of_content or "").upper()
+            stack_str = " ".join(row.heading_stack).upper()
+            if "GM" in toc or "GM" in stack_str:
+                node_type = "GM"
+            elif "AMC" in toc or "AMC" in stack_str:
+                node_type = "AMC"
+            else:
+                # No signal — keep AMC as the safe default for appendices (not CS)
+                node_type = "AMC"
         
         sdt = sdt_index.get(row.sdt_id)
         if sdt is None:
@@ -542,6 +611,60 @@ def parse_easa_xml(xml_path: Path) -> ParseResult:
         if key not in nodes_by_ref:
             nodes_by_ref[key] = node
             result.nodes.append(node)
+
+    # ── Second pass: attach standalone appendices to their parent AMC/CS article ──────────────
+    # A standalone appendix has reference_code like "Appendix 1 – Assessment methods" with no
+    # "to AMC/CS XXXX" clause. We find the parent by scanning backwards through the TOC rows
+    # to find the last AMC or CS article in the same heading_stack.
+    ref_to_node: dict[str, ParsedNode] = {n.reference_code: n for n in result.nodes}
+    for i, row in enumerate(rows):
+        if not row.title.strip().upper().startswith(("APPENDIX ", "APPENDIX\xa0")):
+            continue
+        # Only standalone appendices (no "to AMC/CS" in title)
+        if re.search(r"\bto\s+(?:AMC|GM|CS)\b", row.title, re.IGNORECASE):
+            continue
+        # Find the node for this appendix
+        node_type_app, code_app, _ = _classify(row.title, default_node_type)
+        if node_type_app is None:
+            continue
+        ref_code_app = _build_reference_code(node_type_app, code_app, row.title)
+        app_node = ref_to_node.get(ref_code_app)
+        if app_node is None:
+            continue
+        # Scan backwards in TOC rows to find nearest preceding AMC/CS article
+        # that shares the same heading_stack (same section context)
+        parent_ref: str | None = None
+        for j in range(i - 1, -1, -1):
+            prev = rows[j]
+            if prev.heading_stack != row.heading_stack:
+                continue
+            # Skip other standalone appendices — they are not valid parents
+            if prev.title.strip().upper().startswith(("APPENDIX ", "APPENDIX\xa0")) and not re.search(r"\bto\s+(?:AMC|GM|CS)\b", prev.title, re.IGNORECASE):
+                continue
+            ptype, pcode, _ = _classify(prev.title, default_node_type)
+            if ptype not in ("AMC", "GM", "CS", "IR"):
+                continue
+            if pcode and re.search(ARTICLE_CODE_PATTERN, pcode):
+                # Exclude CS appendix articles (25A..., 25K..., K25.x, M25.x etc.) as parents
+                if re.search(r"\b25[A-Z]\d|\b[A-Z]25\.", pcode):
+                    continue
+                parent_ref = _build_reference_code(ptype, pcode, prev.title)
+                break
+        if not parent_ref:
+            continue
+        # Rebuild hierarchy_path: insert parent_ref before the appendix segment
+        hp_parts = app_node.hierarchy_path.rsplit(" / ", 1)
+        if len(hp_parts) == 2:
+            app_node.hierarchy_path = f"{hp_parts[0]} / {parent_ref} / {hp_parts[1]}"
+
+    # ── Third pass: deduplicate CS appendices superseded by AMC in same batch ─────────────────
+    # If an appendix node was classified as CS but an AMC exists for the same reference_code,
+    # the CS version is spurious (standalone appendices are always AMC/GM, never CS articles).
+    amc_refs = {n.reference_code for n in result.nodes if n.node_type in ("AMC", "GM") and re.match(r"^Appendix\b", n.reference_code, re.IGNORECASE)}
+    result.nodes = [
+        n for n in result.nodes
+        if not (n.node_type == "CS" and re.match(r"^Appendix\b", n.reference_code, re.IGNORECASE) and n.reference_code in amc_refs)
+    ]
 
     # Re-use existing edge logic...
 

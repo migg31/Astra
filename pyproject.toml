@@ -1,6 +1,6 @@
 [project]
 name = "astra"
-version = "0.5.0"
+version = "0.6.0"
 description = "Astra — aviation Type Certification expertise platform (EASA Part 21)"
 requires-python = ">=3.12"
 dependencies = [
@@ -12,8 +12,6 @@ dependencies = [
     "pydantic-settings>=2.6",
     "python-dotenv>=1.0",
     "lxml>=6.0.3",
-    "pymupdf>=1.24",
-    "chromadb>=1.5.7",
     "anthropic>=0.40",
     "openai>=1.0",
 ]

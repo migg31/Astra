@@ -81,6 +81,24 @@ export function AskPanel({ onNavigate, sourceFilter, sourceLabel }: Props) {
             )}
           </div>
 
+          {result.cited_nodes?.length > 0 && (
+            <div className="ask-cited">
+              <span className="ask-cited-label">Cited articles</span>
+              <div className="ask-cited-badges">
+                {result.cited_nodes.map(cn => (
+                  <button
+                    key={cn.node_id}
+                    className={`badge badge-${cn.node_type} ask-cited-badge`}
+                    onClick={() => onNavigate(cn.node_id)}
+                    title={cn.hierarchy_path || cn.node_id}
+                  >
+                    {cn.reference_code}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="ask-sources">
             <h3>Sources</h3>
             <ul>

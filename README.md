@@ -1,4 +1,4 @@
-# Astra (v0.5.0)
+# Astra (v0.6.0)
 
 Aviation Certification platform for EASA regulatory framework.
 
@@ -8,15 +8,15 @@ Full-stack application covering HARVEST, EXPLORE, and **ASK (RAG)** layers.
 
 | Layer | Status | Detail |
 |---|---|---|
-| HARVEST | ✅ | EASA XML parser — Part 21 + CS-25 (836 nodes) + CS-ACNS (501 nodes) |
-| DATA | ✅ | PostgreSQL (Structured) + ChromaDB (Vector) |
-| KNOWLEDGE | ✅ | 5 495+ regulatory nodes (IR / AMC / GM / CS), 2 600+ edges |
+| HARVEST | ✅ | EASA XML parser — Part 21 (1 095 nodes) + CS-25 + CS-ACNS (503 nodes) |
+| DATA | ✅ | PostgreSQL + pgvector (Vector) |
+| KNOWLEDGE | ✅ | 5 500+ regulatory nodes (IR / AMC / GM / CS), 2 600+ edges |
 | EXPLORE UI | ✅ | React 3-panel: resizable sidebar / article / neighbors — with version history drawer |
 | ASK UI | ✅ | RAG-based AI assistant with anti-hallucination safeguards |
 | ADMIN | ✅ | Admin Console for system health, stats, and harvester control |
 
 ### Key Features
-- **Admin Console**: Real-time monitoring of PostgreSQL, ChromaDB, and Ollama (Mistral/Nomic).
+- **Admin Console**: Real-time monitoring of PostgreSQL, pgvector, and Ollama (Mistral/Nomic).
 - **Interactive Harvester**: Trigger regulatory sync directly from the UI with `enabled` flag support.
 - **Regulatory Explorer**: DocPicker sidebar (EASA framework by domain), resizable tree panel, HTML article rendering with clickable cross-references, and a doc info page on first load.
 - **Version History drawer**: Flat dense list of all amendments/editions pinned to the bottom of the sidebar, collapsible, with EASA download links (with confirmation).
@@ -26,7 +26,7 @@ Full-stack application covering HARVEST, EXPLORE, and **ASK (RAG)** layers.
 ## Prerequisites
 
 - Python 3.12+
-- Docker Desktop (for Postgres & ChromaDB)
+- Docker Desktop (for Postgres)
 - `uv` (`pip install uv`)
 - Node.js 18+ (for the frontend)
 - **Ollama** (Running locally with `mistral` and `nomic-embed-text` models)
@@ -48,7 +48,7 @@ docker compose up -d
 # Initial Ingestion & Embedding
 # 1. Fetch & Parse XML
 python -m uv run python -m backend.harvest.ingest
-# 2. Generate Vector Embeddings (Requires Ollama running)
+# 2. Generate Vector Embeddings (optional — requires Ollama running)
 python -m uv run python -m backend.rag.ingest_embeddings
 ```
 

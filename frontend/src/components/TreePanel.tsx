@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronRight, ChevronDown, FolderOpen, Folder, BookOpen, FileText, Clock } from "lucide-react";
 import type { CatalogEntry } from "../api";
 import type { DocumentInfo, NodeSummary, NodeType } from "../types";
 import type { SubpartGroup } from "../tree";
@@ -139,6 +140,9 @@ interface Props {
   documents: DocumentInfo[];
   selectedSource: string | null;
   onSelectSource: (source: string) => void;
+  // Auto-expand + scroll to a specific node
+  scrollToNodeId?: string | null;
+  onScrolled?: () => void;
 }
 
 export function TreePanel({
@@ -154,9 +158,12 @@ export function TreePanel({
   documents,
   selectedSource,
   onSelectSource,
+  scrollToNodeId,
+  onScrolled,
 }: Props) {
   const isSearching = searchQuery.trim().length > 0;
   const [showHistory, setShowHistory] = useState(false);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   // Derive source_key from catalog for the selected source
   const activeEntry = catalog.find((e) => e.source_root === selectedSource);
@@ -188,6 +195,41 @@ export function TreePanel({
       return next;
     });
   }
+
+  // Auto-expand + scroll when scrollToNodeId is set
+  useEffect(() => {
+    if (!scrollToNodeId) return;
+    // Find which subpart+section contains this node
+    const keysToExpand: string[] = [];
+    for (const subpart of tree) {
+      const subpartKey = subpart.name;
+      for (const section of subpart.sections) {
+        const sectionKey = section.name ? `${subpartKey}::${section.name}` : null;
+        const allArticles = [...subpart.articles, ...section.articles];
+        const found = allArticles.some((art) =>
+          art.nodes.some((n) => n.node_id === scrollToNodeId)
+        );
+        if (found) {
+          keysToExpand.push(subpartKey);
+          if (sectionKey) keysToExpand.push(sectionKey);
+          break;
+        }
+      }
+    }
+    if (keysToExpand.length > 0) {
+      setCollapsed((prev) => {
+        const next = new Set(prev);
+        keysToExpand.forEach((k) => next.delete(k));
+        return next;
+      });
+    }
+    // Scroll after a tick so the DOM is updated
+    setTimeout(() => {
+      const el = scrollAreaRef.current?.querySelector(`[data-nodeid="${scrollToNodeId}"]`) as HTMLElement | null;
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+      onScrolled?.();
+    }, 80);
+  }, [scrollToNodeId]);
 
   return (
     <nav className="tree-panel">
@@ -249,11 +291,12 @@ export function TreePanel({
           )}
         </ul>
       ) : (
-        <div className="tree-scroll-area">
+        <div className="tree-scroll-area" ref={scrollAreaRef}>
           {tree.map((subpart) => {
             const subpartKey = subpart.name;
             const isSubpartCollapsed = collapsed.has(subpartKey);
             const leafCount = subpart.articles.reduce((n, a) => n + a.nodes.length, 0);
+            const SubpartIcon = isSubpartCollapsed ? Folder : FolderOpen;
             return (
               <section key={subpartKey} className="tree-subpart">
                 <h3
@@ -261,45 +304,63 @@ export function TreePanel({
                   onClick={() => toggle(subpartKey)}
                   title={isSubpartCollapsed ? "Expand" : "Collapse"}
                 >
-                  <span className="tree-subpart-chevron">{isSubpartCollapsed ? "▶" : "▼"}</span>
+                  <span className="tree-subpart-chevron">
+                    {isSubpartCollapsed
+                      ? <ChevronRight size={12} strokeWidth={2.5} />
+                      : <ChevronDown size={12} strokeWidth={2.5} />}
+                  </span>
+                  <SubpartIcon size={13} strokeWidth={1.8} className="tree-subpart-icon" />
                   <span className="tree-subpart-name">{subpart.name}</span>
                   <span className="tree-subpart-count">{leafCount}</span>
                 </h3>
                 {!isSubpartCollapsed && (
-                  <div>
+                  <div className="tree-subpart-body">
                     {subpart.sections.map((section) => {
                       const sectionKey = `${subpartKey}::${section.name}`;
                       const isSectionCollapsed = collapsed.has(sectionKey);
                       const sectionLeafCount = section.articles.reduce((n, a) => n + a.nodes.length, 0);
                       return (
                         <div key={sectionKey} className="tree-section">
-                          {/* Only render section header when it has a name */}
                           {section.name && (
                             <h4
                               className="tree-section-header"
                               onClick={() => toggle(sectionKey)}
                               title={isSectionCollapsed ? "Expand" : "Collapse"}
                             >
-                              <span className="tree-subpart-chevron">{isSectionCollapsed ? "▶" : "▼"}</span>
+                              <span className="tree-subpart-chevron">
+                                {isSectionCollapsed
+                                  ? <ChevronRight size={11} strokeWidth={2.5} />
+                                  : <ChevronDown size={11} strokeWidth={2.5} />}
+                              </span>
+                              <BookOpen size={11} strokeWidth={1.8} className="tree-section-icon" />
                               <span className="tree-section-name">{section.name}</span>
                               <span className="tree-subpart-count">{sectionLeafCount}</span>
                             </h4>
                           )}
                           {!isSectionCollapsed && (
-                            <ul>
+                            <ul className="tree-articles-list">
                               {section.articles.map((article) => (
-                                <li key={article.articleCode}>
-                                  <div className="tree-article-code">{article.articleCode}</div>
+                                <li key={article.articleCode} className="tree-article-group">
+                                  {article.articleCode && !article.articleCode.startsWith("§") && (
+                                    <div className="tree-article-code">{article.articleCode}</div>
+                                  )}
+                                  {article.articleCode.startsWith("§") && (
+                                    <div className="tree-article-code tree-article-synthetic">
+                                      {article.articleCode.slice(1)}
+                                    </div>
+                                  )}
                                   <ul className="tree-variants">
                                     {article.nodes.map((node) => (
                                       <li
                                         key={node.node_id}
+                                        data-nodeid={node.node_id}
                                         className={
                                           "tree-leaf" +
                                           (node.node_id === selectedNodeId ? " is-selected" : "")
                                         }
                                         onClick={() => onSelect(node)}
                                       >
+                                        <FileText size={11} strokeWidth={1.8} className="tree-leaf-icon" />
                                         <span className={`badge badge-${node.node_type}`}>
                                           {node.node_type}
                                         </span>
@@ -331,7 +392,10 @@ export function TreePanel({
             className="tree-history-drawer-header"
             onClick={() => setShowHistory((v) => !v)}
           >
-            <span className="tree-history-drawer-chevron">{showHistory ? "▼" : "▶"}</span>
+            <span className="tree-history-drawer-chevron">
+              {showHistory ? <ChevronDown size={12} strokeWidth={2.5} /> : <ChevronRight size={12} strokeWidth={2.5} />}
+            </span>
+            <Clock size={12} strokeWidth={1.8} />
             <span className="tree-history-drawer-label">Version history</span>
           </button>
           {showHistory && (

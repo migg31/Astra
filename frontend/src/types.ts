@@ -51,10 +51,19 @@ export interface SourceNode {
   score: number;
 }
 
+export interface CitedNode {
+  node_id: string;
+  reference_code: string;
+  node_type: string;
+  hierarchy_path: string;
+}
+
 export interface AskResponse {
   answer: string;
   sources: SourceNode[];
   question: string;
+  cited_node_ids: string[];
+  cited_nodes: CitedNode[];
 }
 
 export interface NeighborsResponse {
@@ -113,10 +122,13 @@ export interface SystemStats {
 
 export interface HealthStatus {
   postgres: boolean;
-  chroma: boolean;
+  pgvector: boolean;
   ollama_server: boolean;
   ollama_model_embed: boolean;
   ollama_model_chat: boolean;
+  ollama_server_error?: string | null;
+  ollama_model_embed_error?: string | null;
+  ollama_model_chat_error?: string | null;
 }
 
 export interface IngestionStatus {
@@ -140,6 +152,9 @@ export interface SystemConfig {
   data_directory: string;
   db_host: string;
   ollama_base_url: string;
+  chat_model: string;
+  embed_model: string;
+  chat_provider: string;
 }
 
 export interface RegulatorySource {

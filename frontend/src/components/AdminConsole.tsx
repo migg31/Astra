@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import {
   createSource, deleteSource, getHarvesterStatus, getHealth, getStats,
-  getSystemConfig, getVersionCheck, listHarvesterSources, listSources, startHarvester, updateSource,
+  getSystemConfig, getVersionCheck, listHarvesterSources, listSources, runEmbeddings, startHarvester, updateSource,
 } from "../api";
 import type { VersionCheckResult } from "../api";
-import type { HealthStatus, IngestionStatus, RegulatorySource, SystemStats } from "../types";
+import type { HealthStatus, IngestionStatus, RegulatorySource, SystemConfig, SystemStats } from "../types";
 
 type AdminTab = "overview" | "harvest" | "sources" | "versions";
 
@@ -59,17 +59,18 @@ export function AdminConsole({ onClose }: AdminConsoleProps) {
   const [editingSource, setEditingSource] = useState<RegulatorySource | null>(null);
   const [addingSource, setAddingSource] = useState(false);
   const [newSource, setNewSource] = useState({ name: "", base_url: "", external_id: "", format: "MIXED", frequency: "monthly", enabled: true });
+  const [config, setConfig] = useState<SystemConfig | null>(null);
   const [versionChecks, setVersionChecks] = useState<VersionCheckResult[] | null>(null);
   const [versionCheckLoading, setVersionCheckLoading] = useState(false);
   const [versionCheckError, setVersionCheckError] = useState<string | null>(null);
 
   const refreshData = async () => {
     try {
-      const [s, h, i, , src, regSrc] = await Promise.all([
+      const [s, h, i, cfg, src, regSrc] = await Promise.all([
         getStats(), getHealth(), getHarvesterStatus(), getSystemConfig(),
         listHarvesterSources(), listSources(),
       ]);
-      setStats(s); setHealth(h); setHarvester(i);
+      setStats(s); setHealth(h); setHarvester(i); setConfig(cfg);
       setSources(src); setRegulatorySources(regSrc);
       setError(null);
     } catch (err: any) { setError(err.message); }
@@ -86,6 +87,15 @@ export function AdminConsole({ onClose }: AdminConsoleProps) {
     try { setVersionChecks(await getVersionCheck()); }
     catch (err: any) { setVersionCheckError(err.message); }
     finally { setVersionCheckLoading(false); }
+  };
+
+  const [embedRunning, setEmbedRunning] = useState(false);
+
+  const handleRunEmbeddings = async () => {
+    setEmbedRunning(true);
+    try { await runEmbeddings(); refreshData(); }
+    catch (err: any) { setError("Embed failed: " + err.message); }
+    finally { setEmbedRunning(false); }
   };
 
   const handleRunHarvester = async () => {
@@ -179,17 +189,59 @@ export function AdminConsole({ onClose }: AdminConsoleProps) {
               <BigStatCard value={stats?.nodes_count ?? "-"} label="Regulatory Nodes" color="#222F64" />
               <BigStatCard value={stats?.documents_count ?? "-"} label="Documents" color="#007FC2" />
               <BigStatCard value={stats?.edges_count ?? "-"} label="Relations" color="#16a34a" />
-              <BigStatCard value={stats?.embeddings_count ?? "-"} label="Embeddings" color="#7c3aed" />
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "stretch", gap: "0.4rem", flex: "1 1 0" }}>
+                <BigStatCard value={stats?.embeddings_count ?? "-"} label="Chunks (pgvector)" color="#7c3aed" />
+                {(embedRunning || harvester?.is_running) && (harvester?.embed_total ?? 0) > 0 ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.65rem", color: "#64748b" }}>
+                      <span>Re-indexing…</span>
+                      <span>{harvester!.embed_done} / {harvester!.embed_total}</span>
+                    </div>
+                    <div style={{ background: "#e2e8f0", borderRadius: 4, height: 6, overflow: "hidden" }}>
+                      <div style={{
+                        background: "#7c3aed",
+                        height: 6,
+                        borderRadius: 4,
+                        width: `${Math.round((harvester!.embed_done / harvester!.embed_total) * 100)}%`,
+                        transition: "width 0.5s ease",
+                      }} />
+                    </div>
+                    <div style={{ fontSize: "0.62rem", color: "#a78bfa", textAlign: "right" }}>
+                      {Math.round((harvester!.embed_done / harvester!.embed_total) * 100)}%
+                    </div>
+                  </div>
+                ) : (embedRunning || harvester?.is_running) ? (
+                  <div style={{ fontSize: "0.68rem", color: "#64748b", padding: "0.3rem 0" }}>Starting…</div>
+                ) : (
+                  <button
+                    className="admin-action-btn"
+                    onClick={handleRunEmbeddings}
+                    title="Re-generate all embeddings into pgvector"
+                    style={{ fontSize: "0.72rem", padding: "0.3rem 0.6rem" }}
+                  >
+                    ⟳ Re-index
+                  </button>
+                )}
+              </div>
             </div>
             <div className="admin-two-col">
               <div className="admin-card">
                 <h2 className="admin-card-title">System Health</h2>
                 <div className="admin-health-grid">
                   <HealthRow label="PostgreSQL" ok={health?.postgres} />
-                  <HealthRow label="ChromaDB" ok={health?.chroma} />
-                  <HealthRow label="Ollama Server" ok={health?.ollama_server} />
-                  <HealthRow label="Chat Model" ok={health?.ollama_model_chat} />
-                  <HealthRow label="Embed Model" ok={health?.ollama_model_embed} />
+                  <HealthRow label="pgVector" ok={health?.pgvector} />
+                  <HealthRow label="Ollama Server" ok={health?.ollama_server} error={health?.ollama_server_error} />
+                  <HealthRow
+                    label={config ? `Chat — ${config.chat_model}` : "Chat Model"}
+                    ok={health?.ollama_model_chat}
+                    sublabel={config ? config.chat_provider : undefined}
+                    error={health?.ollama_model_chat_error}
+                  />
+                  <HealthRow
+                    label={config ? `Embed — ${config.embed_model}` : "Embed Model"}
+                    ok={health?.ollama_model_embed}
+                    error={health?.ollama_model_embed_error}
+                  />
                 </div>
               </div>
               <div className="admin-card">
@@ -501,12 +553,20 @@ function BigStatCard({ value, label, color }: { value: string | number; label: s
   );
 }
 
-function HealthRow({ label, ok }: { label: string; ok?: boolean }) {
+function HealthRow({ label, ok, sublabel, error }: { label: string; ok?: boolean; sublabel?: string; error?: string | null }) {
   return (
-    <div className="admin-health-row">
-      <span className={"admin-health-dot" + (ok ? " ok" : " err")} />
-      <span className="admin-health-label">{label}</span>
-      <span className={"admin-health-status" + (ok ? " ok" : " err")}>{ok ? "Online" : "Offline"}</span>
+    <div className="admin-health-row-wrap">
+      <div className="admin-health-row" title={!ok && error ? error : undefined}>
+        <span className={"admin-health-dot" + (ok ? " ok" : " err")} />
+        <span className="admin-health-label">
+          {label}
+          {sublabel && <span className="admin-health-sublabel">{sublabel}</span>}
+        </span>
+        <span className={"admin-health-status" + (ok ? " ok" : " err")}>{ok ? "Online" : "Offline"}</span>
+      </div>
+      {!ok && error && (
+        <div className="admin-health-error">{error}</div>
+      )}
     </div>
   );
 }

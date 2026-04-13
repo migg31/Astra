@@ -205,6 +205,15 @@ export function getSystemConfig(): Promise<SystemConfig> {
   return fetchJSON<SystemConfig>("/api/admin/config");
 }
 
+export async function runEmbeddings(): Promise<{ message: string }> {
+  const res = await fetch(`${API_BASE}/api/admin/embeddings/run`, { method: "POST" });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({}));
+    throw new Error((detail as { detail?: string }).detail ?? `${res.status}`);
+  }
+  return res.json();
+}
+
 export async function startHarvester(sources: string | string[]): Promise<{ message: string }> {
   const sourceList = Array.isArray(sources) ? sources : [sources];
   const res = await fetch(`${API_BASE}/api/admin/harvester/run`, {

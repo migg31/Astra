@@ -30,8 +30,8 @@ def test_cs25_node_count():
     for n in result.nodes:
         by_type[n.node_type] = by_type.get(n.node_type, 0) + 1
     
-    assert by_type.get("CS", 0) >= 500, "Should have at least 500 CS nodes"
-    assert by_type.get("AMC", 0) >= 320, "Should have at least 320 AMC nodes"
+    assert by_type.get("CS", 0) >= 460, "Should have at least 460 CS nodes"
+    assert by_type.get("AMC", 0) >= 360, "Should have at least 360 AMC nodes (includes reclassified appendices)"
     assert by_type.get("IR", 0) == 0, "CS-25 should have no IR nodes (all should be CS)"
 
 
@@ -60,8 +60,8 @@ def test_cs_acns_node_count():
     for n in result.nodes:
         by_type[n.node_type] = by_type.get(n.node_type, 0) + 1
     
-    assert by_type.get("CS", 0) >= 240, "Should have at least 240 CS nodes"
-    assert by_type.get("AMC", 0) >= 175, "Should have at least 175 AMC nodes"
+    assert by_type.get("CS", 0) >= 220, "Should have at least 220 CS nodes"
+    assert by_type.get("AMC", 0) >= 190, "Should have at least 190 AMC nodes (includes reclassified appendices)"
     assert by_type.get("GM", 0) >= 80, "Should have at least 80 GM nodes"
 
 
@@ -108,9 +108,16 @@ def test_cs25_amc_no_format():
 
 @pytest.mark.skipif(not CS25_XML.exists(), reason="CS-25 XML not available")
 def test_cs25_appendices():
-    """CS-25 standalone appendices should be parsed."""
+    """CS-25 standalone appendices should be parsed and NOT tagged as CS."""
     result = parse_easa_xml(CS25_XML)
     
     # Count appendix nodes
     appendix_nodes = [n for n in result.nodes if "Appendix" in n.reference_code or "APPENDIX" in n.reference_code]
     assert len(appendix_nodes) >= 30, f"Expected at least 30 appendix nodes, got {len(appendix_nodes)}"
+    
+    # Standalone appendices should be AMC or GM, never CS
+    cs_appendices = [n for n in appendix_nodes if n.node_type == "CS"]
+    assert len(cs_appendices) == 0, (
+        f"Found {len(cs_appendices)} appendices tagged as CS (should be AMC/GM): "
+        f"{[n.reference_code for n in cs_appendices][:5]}"
+    )

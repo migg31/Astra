@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-04-13
+
+### Added
+- **Image rendering**: Images embedded in Flat-OPC XML documents (Part 21, CS-ACNS, CS-25) are now extracted as base64 data-URIs and rendered inline in the article viewer.
+- **Em-dash list grouping**: Paragraphs starting with `—` (em-dash) in the article HTML are now grouped into indented `<ul>` lists, matching the original PDF layout.
+- **`bullet1`/`bullet2` Word styles**: Word paragraph styles `bullet1`, `bullet2` etc. were not recognized as list items — now correctly rendered as `<li>` elements in `<ul>`.
+- **Stale node deletion**: Re-ingestion now removes nodes from the database that are no longer present in the source document.
+
+### Fixed
+- **Parser regression — `AMC N ARTICLE` pattern**: Titles like `"AMC 1 ACNS.C.PBN.305"` (space between type and variant number) were parsed with code `"1"` instead of `"ACNS.C.PBN.305"`. Fixed by supporting spaced variant numbers in `TITLE_RE` with a lookahead to avoid ambiguity with numeric article codes.
+- **Parser regression — `GM 21.A.101`**: `GM\s*\d*` was greedily consuming the first digit of numeric article codes (e.g. `"GM 21.A.101"` → code `"1.A.101"`). Fixed with a lookahead-guarded alternative.
+- **Parser regression — `GM No N to ARTICLE`**: `"GM No 1 to 21.A.101(g)"` was not matched by the `No.` prefix pattern (AMC-only). Extended to cover GM as well.
+- **Duplicate CS/AMC appendix nodes**: Added a third pass in the parser to drop spurious `CS`-typed appendix nodes when an `AMC`/`GM` counterpart with the same `reference_code` exists in the same batch.
+- **ACNS appendix isolation**: CS-ACNS appendices were appearing as isolated tree nodes. Root cause was the `AMC 1 ACNS.C.PBN.305` mis-parse; fixed by the `TITLE_RE` correction above.
+
+### Changed
+- **`pyproject.toml`**: Removed unused `chromadb` and `pymupdf` dependencies.
+- **Non-regression discipline**: Any change to `TITLE_RE` or `_classify` must be validated with targeted test cases and a full scan of all source XMLs before ingestion.
+
+### Removed
+- `scratch/` directory (one-off diagnostic scripts).
+- `scripts/cleanup_cs_duplicates.py`, `scripts/reset_cs_sources.py` (one-shot migration scripts, no longer needed).
+- `Plan.MD`, `RAG.MD`, `RAG2.MD` (internal working documents).
+
 ## [0.5.0] - 2026-04-12
 
 ### Added
