@@ -21,7 +21,7 @@ from backend.harvest.ingest import (
 from backend.harvest.catalog import CATALOG
 from backend.rag.ingest_embeddings import main as run_embedding_pipeline
 from backend.rag.embedder import _get_client as get_ollama_client, EMBED_MODEL
-from backend.rag.responder import CHAT_MODEL
+from backend.config import settings
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -154,7 +154,7 @@ async def check_health(db: AsyncSession = Depends(get_session)):
         # Check specific models
         model_ids = [m.id for m in models.data]
         ollama_model_embed_ok = any(m == EMBED_MODEL or m.startswith(EMBED_MODEL + ":") for m in model_ids)
-        ollama_model_chat_ok = any(m == CHAT_MODEL or m.startswith(CHAT_MODEL + ":") for m in model_ids)
+        ollama_model_chat_ok = any(m == settings.ollama_model or m.startswith(settings.ollama_model + ":") for m in model_ids)
     except Exception:
         pass
 

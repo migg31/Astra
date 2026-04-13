@@ -1,6 +1,6 @@
 # Astra (v0.5.0)
 
-Aviation Type Certification expertise platform for EASA Part 21 professionals.
+Aviation Certification platform for EASA regulatory framework.
 
 ## Phase 2 MVP — In Progress
 
