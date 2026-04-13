@@ -1,6 +1,6 @@
 # Astra (v0.2.0)
 
-Aviation Type Certification expertise platform for EASA Part 21 professionals.
+Aviation Certification platform for EASA regulations framework.
 
 ## Phase 2 MVP — In Progress
 
@@ -19,7 +19,7 @@ Full-stack application covering HARVEST, EXPLORE, and **ASK (RAG)** layers.
 - **Admin Console**: Real-time monitoring of PostgreSQL, ChromaDB, and Ollama (Mistral/Nomic).
 - **Interactive Harvester**: Trigger regulatory sync directly from the UI.
 - **Regulatory Explorer**: Tree navigation with full HTML rendering and clickable cross-references.
-- **AI Assistant**: Query Part 21 using natural language with strict sourcing and disclaimers.
+- **AI Assistant**: Query regulations using natural language with strict sourcing and disclaimers.
 
 ## Prerequisites
 
