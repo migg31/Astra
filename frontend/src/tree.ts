@@ -160,6 +160,7 @@ export function buildTree(nodes: NodeSummary[]): SubpartGroup[] {
   const bySubpart = new Map<string, Map<string, Map<string, NodeSummary[]>>>();
   const subpartLabels = new Map<string, string>();
   const sectionLabels = new Map<string, string>();
+  const subpartInsertOrder = new Map<string, number>();
 
   for (const node of nodes) {
     if (node.node_type === "GROUP") continue;
@@ -175,7 +176,10 @@ export function buildTree(nodes: NodeSummary[]): SubpartGroup[] {
     const sectionKey = canonicalLabel(sectionLabels, sectionRaw);
     const art = articleCode(node);
 
-    if (!bySubpart.has(subpartKey)) bySubpart.set(subpartKey, new Map());
+    if (!bySubpart.has(subpartKey)) {
+      subpartInsertOrder.set(subpartKey, subpartInsertOrder.size);
+      bySubpart.set(subpartKey, new Map());
+    }
     const bySec = bySubpart.get(subpartKey)!;
     if (!bySec.has(sectionKey)) bySec.set(sectionKey, new Map());
     const byArt = bySec.get(sectionKey)!;
@@ -237,7 +241,14 @@ export function buildTree(nodes: NodeSummary[]): SubpartGroup[] {
     }
     // Numeric subparts (e.g. "1 PREAMBLE", "10 OPERATIONAL CRITERIA") sort numerically
     const na = leadingNum(a.name), nb = leadingNum(b.name);
-    if (na >= 0 && nb >= 0) return na - nb;
+    if (na >= 0 && nb >= 0) {
+      if (na !== nb) return na - nb;
+      // Same leading number (e.g. "1 PREAMBLE" vs "1 INTRODUCTION" from different annexes)
+      // → preserve insertion order using the keys stored in subpartInsertOrder
+      const aKey = a.name.toUpperCase().replace(/\s+/g, " ").trim();
+      const bKey = b.name.toUpperCase().replace(/\s+/g, " ").trim();
+      return (subpartInsertOrder.get(aKey) ?? 0) - (subpartInsertOrder.get(bKey) ?? 0);
+    }
     if (na >= 0) return -1;
     if (nb >= 0) return 1;
     return a.name.localeCompare(b.name);

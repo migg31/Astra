@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import type { CatalogEntry, VersionCheckResult } from "../api";
 import type { NodeDetail, NodeSummary, NodeType } from "../types";
 import { typeOrder } from "../tree";
@@ -275,6 +275,134 @@ function groupSiblingsByType(siblings: NodeSummary[]): Map<NodeType, NodeSummary
   return groups;
 }
 
+/**
+ * Returns true when a line starts a new logical paragraph in PDF plain-text:
+ *   "1 General"  "1.1 Something"  "a. text"  "(a) text"  "Note:"  "—"  blank
+ */
+function isParaStart(line: string): boolean {
+  if (!line) return true;
+  // Numbered section: "1 General" or "1.1 Analysis..." or "1.4.2 For..."
+  if (/^\d+(\.\d+)*\s+\S/.test(line)) return true;
+  // Letter list: "a. text"  "b. text"
+  if (/^[a-z]\.\s/.test(line)) return true;
+  // Paren list: "(a) text"  "(1) text"  "(i) text"
+  if (/^\([a-z0-9]{1,4}\)\s/.test(line)) return true;
+  // Half-paren list: "a)"  "b)"  alone on a line or followed by text
+  if (/^[a-z]\)/.test(line)) return true;
+  // Note / Note N:
+  if (/^Note\b/i.test(line)) return true;
+  // Em-dash or bullet
+  if (/^[—–\-•]\s/.test(line)) return true;
+  return false;
+}
+
+/**
+ * Classify indent level from a paragraph's first token.
+ */
+function paraClass(first: string): string {
+  if (/^[a-z]\.\s/.test(first)) return "pt-para pt-indent-1";
+  if (/^[a-z]\)/.test(first)) return "pt-para pt-indent-1";
+  if (/^\([a-z]{1,3}\)\s/.test(first)) {
+    const m = first.match(/^\(([a-z]{1,3})\)/);
+    const marker = m ? m[1] : "";
+    if (/^(i{1,4}|iv|vi{0,3}|ix|x{1,3})$/i.test(marker)) return "pt-para pt-indent-3";
+    return "pt-para pt-indent-1";
+  }
+  if (/^\(\d+\)\s/.test(first)) return "pt-para pt-indent-2";
+  if (/^Note\b/i.test(first)) return "pt-para pt-note";
+  return "pt-para";
+}
+
+/**
+ * Render plain-text content (PDF-parsed) with smart paragraph grouping:
+ * - Wrapped lines belonging to the same sentence are joined with a space
+ * - A new paragraph is started when the next line signals a new section/list item
+ * - Numbered section headings (e.g. "1 General", "2 Flight demonstrations") → <h4>
+ * - Page footer lines (Powered by EASA…) are stripped
+ */
+function renderPlainText(text: string, _knownRefs: Set<string>, _ownRef: string): React.ReactNode[] {
+  // Strip page footer lines before paragraph analysis
+  const rawLines = text.split("\n").map(l => l.trim())
+    .filter(l => !/^Powered by EASA\b/i.test(l));
+  const elements: React.ReactNode[] = [];
+  let buffer: string[] = [];
+
+  const flush = () => {
+    if (buffer.length === 0) return;
+    const joined = buffer.join(" ").trim();
+    buffer = [];
+    if (!joined) return;
+
+    // Pure section heading: "1 General" or "2 Flight demonstrations" (short title, no sub-number)
+    const headingMatch = joined.match(/^(\d+)\s+([A-Z][^.]{2,60})$/);
+    if (headingMatch) {
+      elements.push(
+        <h4 key={elements.length} className="pt-section-heading">
+          <span className="pt-section-num">{headingMatch[1]}</span>
+          {headingMatch[2]}
+        </h4>
+      );
+      return;
+    }
+
+    const cls = paraClass(joined);
+    elements.push(<p key={elements.length} className={cls}>{joined}</p>);
+  };
+
+  // Collect consecutive table rows (lines with \t) into a single <table>
+  let tableRows: string[][] = [];
+
+  const flushTable = () => {
+    if (tableRows.length === 0) return;
+    const rows = tableRows;
+    tableRows = [];
+    elements.push(
+      <table key={elements.length} className="pt-table">
+        <tbody>
+          {rows.map((cols, ri) => (
+            <tr key={ri}>
+              {cols.map((c, ci) => <td key={ci}>{c}</td>)}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    );
+  };
+
+  for (let i = 0; i < rawLines.length; i++) {
+    const line = rawLines[i];
+
+    if (!line) {
+      flush();
+      flushTable();
+      continue;
+    }
+
+    // Tab-separated line → table row
+    if (line.includes("\t")) {
+      flush(); // flush any pending paragraph first
+      tableRows.push(line.split("\t"));
+      continue;
+    }
+
+    // Non-tab line after table rows → flush table
+    if (tableRows.length > 0 && !line.includes("\t")) {
+      flushTable();
+    }
+
+    // If this line starts a new paragraph, flush the previous one first
+    if (buffer.length > 0 && isParaStart(line)) {
+      flush();
+    }
+
+    buffer.push(line);
+  }
+  flush();
+  flushTable();
+  return elements;
+}
+
+
 export function ArticlePanel({ node, loading, error, onNavigate, knownRefs, siblings, onSelectSibling, catalogEntry, versionCheck }: Props) {
   const articleRef = useRef<HTMLElement>(null);
   const [expandedType, setExpandedType] = useState<NodeType | null>(null);
@@ -414,10 +542,8 @@ export function ArticlePanel({ node, loading, error, onNavigate, knownRefs, sibl
           onClick={handleArticleClick}
         />
       ) : (
-        <article>
-          {node.content_text.split("\n").map((line, i) => (
-            <p key={i}>{line}</p>
-          ))}
+        <article ref={articleRef} className="article-text" onClick={handleArticleClick}>
+          {renderPlainText(node.content_text, knownRefs ?? new Set(), node.reference_code)}
         </article>
       )}
       </div>
