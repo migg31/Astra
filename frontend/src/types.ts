@@ -161,6 +161,12 @@ export interface RegulatorySource {
   source_id: string;
   name: string;
   base_url: string;
+  urls?: {
+    xml?: string;
+    html?: string;
+    pdf?: string;
+    json?: string;
+  };
   external_id: string | null;
   format: string;
   frequency: string;

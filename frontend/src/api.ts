@@ -26,11 +26,14 @@ export interface CatalogEntry {
   id: string;
   name: string;
   short: string;
-  category: "basic" | "ir" | "cs" | "amcgm";
+  category: string;
   domain: string;
   description: string;
   easa_url: string;
   harvest_key: string | null;
+  harvest_source_id: string | null;
+  is_active: boolean;
+  harvester_enabled: boolean;
   indexed: boolean;
   source_title: string | null;
   source_root: string | null;
@@ -40,8 +43,46 @@ export interface CatalogEntry {
   node_count: number;
 }
 
+export interface CatalogMeta {
+  categories: { id: string; label: string }[];
+  domains:    { id: string; label: string }[];
+}
+
 export function getCatalog(): Promise<CatalogEntry[]> {
   return fetchJSON<CatalogEntry[]>("/api/admin/catalog");
+}
+
+export function getCatalogMeta(): Promise<CatalogMeta> {
+  return fetchJSON<CatalogMeta>("/api/admin/catalog/meta");
+}
+
+export async function patchHarvesterEnabled(sourceId: string, enabled: boolean): Promise<{ ok: boolean }> {
+  const res = await fetch(`${API_BASE}/api/admin/sources/${sourceId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({}));
+    throw new Error((detail as { detail?: string }).detail ?? `${res.status}`);
+  }
+  return { ok: true };
+}
+
+export async function patchCatalogEntry(
+  id: string,
+  body: Partial<Pick<CatalogEntry, "category" | "domain" | "is_active" | "description" | "name" | "short" | "easa_url" | "harvest_key">>
+): Promise<{ ok: boolean }> {
+  const res = await fetch(`${API_BASE}/api/admin/catalog/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({}));
+    throw new Error((detail as { detail?: string }).detail ?? `${res.status}`);
+  }
+  return res.json();
 }
 
 export function listAllNodes(): Promise<NodeListResponse> {
@@ -179,7 +220,7 @@ export async function createSource(body: Omit<RegulatorySource, "source_id" | "l
 
 export async function updateSource(
   sourceId: string,
-  body: { name?: string; base_url?: string; enabled?: boolean }
+  body: { name?: string; base_url?: string; urls?: RegulatorySource["urls"]; enabled?: boolean }
 ): Promise<RegulatorySource> {
   const res = await fetch(`${API_BASE}/api/admin/sources/${sourceId}`, {
     method: "PATCH",
@@ -214,12 +255,12 @@ export async function runEmbeddings(): Promise<{ message: string }> {
   return res.json();
 }
 
-export async function startHarvester(sources: string | string[]): Promise<{ message: string }> {
+export async function startHarvester(sources: string | string[], reindexVectors = false): Promise<{ message: string }> {
   const sourceList = Array.isArray(sources) ? sources : [sources];
   const res = await fetch(`${API_BASE}/api/admin/harvester/run`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ sources: sourceList }),
+    body: JSON.stringify({ sources: sourceList, reindex_vectors: reindexVectors }),
   });
   if (!res.ok) {
     const detail = await res.json().catch(() => ({}));

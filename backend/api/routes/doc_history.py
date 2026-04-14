@@ -61,6 +61,21 @@ def get_history(source_key: str):
             )
             row = cur.fetchone()
     if not row:
+        # Source may be indexed (PDF-only) but have no version history entries — return empty history
+        with psycopg2.connect(settings.database_url_sync) as conn2:
+            with conn2.cursor() as cur2:
+                cur2.execute(
+                    "SELECT name FROM source_files WHERE external_id = %s LIMIT 1",
+                    (source_key,),
+                )
+                src_row = cur2.fetchone()
+        if src_row:
+            return DocumentHistory(
+                source_key=source_key,
+                source_label=src_row[0],
+                versions=[],
+                indexed_version=None,
+            )
         raise HTTPException(status_code=404, detail=f"Source '{source_key}' not found")
     return _get_history(source_key, row[0])
 

@@ -18,9 +18,13 @@ import psycopg2
 from psycopg2.extras import execute_values
 
 from backend.config import settings
-from backend.harvest.easa_fetcher import fetch_easa_xml, fetch_part21_xml, PART21_XML_ZIP_URL
+from backend.harvest.easa_fetcher import fetch_easa_document, fetch_part21_xml, PART21_XML_ZIP_URL
 from backend.harvest.easa_parser import parse_easa_xml
+from backend.harvest.easa_html_parser import parse_easa_html
 from backend.harvest.pdf_cs_parser import parse_cs_pdf
+from backend.harvest.pdf_smart_parser import parse_smart_pdf
+from backend.harvest.pdf_narrative_parser import parse_narrative_pdf
+from backend.harvest.astra_json_parser import parse_astra_json
 from backend.harvest.models import ParseResult
 
 
@@ -45,49 +49,33 @@ def _word_diff(old: str, new: str) -> list[dict]:
             ops.append({"op": "insert", "text": " ".join(new_words[j1:j2])})
     return ops[:500]
 
-# Catalog of available EASA sources
-REGULATORY_SOURCES = {
-    "part21": {
-        "name": "EASA Part 21",
-        "url": "https://www.easa.europa.eu/en/downloads/136660/en",
-        "external_id": "easa-part21",
-    },
-    "part26": {
-        "name": "Part 26 — Additional Airworthiness Specifications",
-        "url": "https://www.easa.europa.eu/en/downloads/136670/en",
-        "external_id": "easa-part26",
-    },
-    "continuing-airworthiness": {
-        "name": "Continuing Airworthiness (M, 145, 66, CAMO)",
-        "url": "https://www.easa.europa.eu/en/downloads/136699/en",
-        "external_id": "easa-airworthiness",
-    },
-    "air-operations": {
-        "name": "Air Operations (ORO, CAT)",
-        "url": "https://www.easa.europa.eu/en/downloads/136682/en",
-        "external_id": "easa-ops",
-    },
-    "aircrew": {
-        "name": "Aircrew (FCL, MED)",
-        "url": "https://www.easa.europa.eu/en/downloads/136654/en",
-        "external_id": "easa-aircrew",
-    },
-    "cs-25": {
-        "name": "CS-25 — Large Aeroplanes",
-        "url": "https://www.easa.europa.eu/en/downloads/136662/en",
-        "external_id": "easa-cs25",
-    },
-    "cs-acns": {
-        "name": "CS-ACNS — Airborne Communications, Navigation and Surveillance",
-        "url": "https://www.easa.europa.eu/en/downloads/136674/en",
-        "external_id": "easa-csacns",
-    },
-    "aerodromes": {
-        "name": "Aerodromes (ADR)",
-        "url": "https://www.easa.europa.eu/en/downloads/136677/en",
-        "external_id": "easa-aerodromes",
-    }
-    }
+def _load_sources_from_db() -> dict[str, dict]:
+    """Load all enabled source_files from DB as {external_id: cfg_dict}.
+    cfg_dict keys: name, external_id, urls (dict), use_smart_parser (bool).
+    """
+    conn = psycopg2.connect(settings.database_url_sync)
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT external_id, name, urls FROM source_files WHERE enabled = TRUE ORDER BY name"
+            )
+            rows = cur.fetchall()
+    finally:
+        conn.close()
+
+    sources: dict[str, dict] = {}
+    for external_id, name, urls_json in rows:
+        urls = urls_json or {}
+        use_smart_parser = bool(urls.pop("use_smart_parser", True))
+        use_narrative_parser = bool(urls.pop("use_narrative_parser", False))
+        sources[external_id] = {
+            "name": name,
+            "external_id": external_id,
+            "urls": urls,
+            "use_smart_parser": use_smart_parser,
+            "use_narrative_parser": use_narrative_parser,
+        }
+    return sources
 
 
 SOURCE_FORMAT = "MIXED"
@@ -99,7 +87,7 @@ def upsert_source(cur, name: str, url: str, external_id: str | None = None) -> s
         # Prefer upsert by external_id to avoid duplicates on rename
         cur.execute(
             """
-            INSERT INTO harvest_sources (external_id, name, base_url, format, frequency, last_sync_at)
+            INSERT INTO source_files (external_id, name, base_url, format, frequency, last_sync_at)
             VALUES (%s, %s, %s, %s, %s, NOW())
             ON CONFLICT (external_id) DO UPDATE
                 SET name         = EXCLUDED.name,
@@ -114,7 +102,7 @@ def upsert_source(cur, name: str, url: str, external_id: str | None = None) -> s
     else:
         cur.execute(
             """
-            INSERT INTO harvest_sources (name, base_url, format, frequency, last_sync_at)
+            INSERT INTO source_files (name, base_url, format, frequency, last_sync_at)
             VALUES (%s, %s, %s, %s, NOW())
             ON CONFLICT (name) DO UPDATE
                 SET base_url     = EXCLUDED.base_url,
@@ -254,7 +242,7 @@ def upsert_nodes(
 
     # ── 4. Build version snapshots ────────────────────────────────────────
     version_rows: list[tuple] = []
-    counters = {"added": 0, "modified": 0, "unchanged": 0, "removed": nodes_removed}
+    counters = {"added": 0, "modified": 0, "unchanged": 0, "deleted": nodes_removed}
 
     for n in result.nodes:
         key = (n.node_type, n.reference_code)
@@ -319,7 +307,12 @@ def upsert_edges(cur, node_map: dict[tuple[str, str], str], result: ParseResult)
             if nid:
                 source_id = nid
                 break
-        target_id = node_map.get(("IR", edge.target_ref)) or node_map.get(("CS", edge.target_ref))
+        target_id = None
+        for candidate_type in ("IR", "AMC", "GM", "CS"):
+            nid = node_map.get((candidate_type, edge.target_ref))
+            if nid:
+                target_id = nid
+                break
         if not source_id or not target_id or source_id == target_id:
             continue
         rows.append((source_id, target_id, edge.relation, edge.confidence, edge.notes))
@@ -341,11 +334,18 @@ def upsert_edges(cur, node_map: dict[tuple[str, str], str], result: ParseResult)
     return cur.rowcount  # actual rows inserted (excludes DO NOTHING conflicts)
 
 
-def ingest(xml_path: Path, *, source_name: str, source_url: str, external_id: str, content_hash: str, seen_keys: set[tuple[str, str]] | None = None, is_latest: bool = False) -> dict:
-    if xml_path.suffix.lower() == ".pdf":
-        result = parse_cs_pdf(xml_path, regulatory_source=source_name)
+def ingest(file_path: Path, *, source_name: str, source_url: str, external_id: str, content_hash: str, doc_format: str = "xml", use_smart_parser: bool = True, use_narrative_parser: bool = False, seen_keys: set[tuple[str, str]] | None = None, is_latest: bool = False, progress_callback=None) -> dict:
+    if doc_format == "json" or file_path.suffix.lower() == ".json":
+        result = parse_astra_json(file_path)
+    elif doc_format == "pdf" and not use_smart_parser:
+        result = parse_cs_pdf(file_path, regulatory_source=source_name)
+    elif doc_format == "pdf":
+        result = parse_smart_pdf(file_path, regulatory_source=source_name, progress_callback=progress_callback)
+    elif doc_format == "html":
+        result = parse_easa_html(file_path, regulatory_source=source_name)
     else:
-        result = parse_easa_xml(xml_path)
+        # Default to XML (includes DOCX)
+        result = parse_easa_xml(file_path)
 
     title = result.source_document_title or source_name
     version_label = result.source_version or "Unknown"
@@ -360,7 +360,7 @@ def ingest(xml_path: Path, *, source_name: str, source_url: str, external_id: st
                 title=title,
                 url=source_url,
                 content_hash=content_hash,
-                raw_path=str(xml_path.resolve()),
+                raw_path=str(file_path.resolve()),
                 version_label=version_label,
                 pub_date=result.source_pub_time.date() if result.source_pub_time else None,
                 amended_by=result.source_version,
@@ -389,6 +389,22 @@ def ingest(xml_path: Path, *, source_name: str, source_url: str, external_id: st
             )
         conn.commit()
 
+        # ── Auto-fill doc_title_pattern for any doc_sources linked to this source ──
+        # Runs only when pattern is NULL so it never overrides a manual value.
+        if title:
+            with psycopg2.connect(settings.database_url_sync) as conn2:
+                with conn2.cursor() as cur2:
+                    cur2.execute(
+                        """
+                        UPDATE regulations
+                        SET doc_title_pattern = %s
+                        WHERE harvest_key = %s
+                          AND doc_title_pattern IS NULL
+                        """,
+                        (f"%{title[:60]}%", external_id),
+                    )
+                conn2.commit()
+
     return {
         "source_name": source_name,
         "source_id": source_id,
@@ -396,6 +412,7 @@ def ingest(xml_path: Path, *, source_name: str, source_url: str, external_id: st
         "nodes": len(result.nodes),
         "nodes_added": counters.get("added", 0),
         "nodes_modified": counters.get("modified", 0),
+        "nodes_deleted": counters.get("deleted", 0),
         "nodes_unchanged": counters.get("unchanged", 0),
         "edges_attempted": len(result.edges),
         "edges_inserted": edges_inserted,
@@ -408,14 +425,18 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Ingest EASA Rules into Postgres")
     parser.add_argument(
         "--source",
-        choices=list(REGULATORY_SOURCES.keys()),
-        default="part21",
-        help="Regulatory source to ingest (default: part21)",
+        help="external_id of the source to ingest (as stored in source_files)",
+        default="easa-part21",
+    )
+    parser.add_argument(
+        "--list-sources",
+        action="store_true",
+        help="List all enabled sources from DB and exit",
     )
     parser.add_argument(
         "--offline",
         type=Path,
-        help="Path to an already-downloaded pkg:package XML; skips the network fetch",
+        help="Path to an already-downloaded document (XML, DOCX, PDF, HTML); skips the network fetch",
     )
     parser.add_argument(
         "--data-dir",
@@ -425,28 +446,51 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    source_cfg = REGULATORY_SOURCES[args.source]
+    sources = _load_sources_from_db()
+
+    if args.list_sources:
+        for eid, cfg in sorted(sources.items()):
+            print(f"  {eid:30s} {cfg['name']}")
+        return 0
+
+    if args.source not in sources:
+        print(f"[error] unknown source '{args.source}'. Use --list-sources to see available sources.")
+        return 1
+
+    source_cfg = sources[args.source]
 
     if args.offline:
-        xml_path = args.offline.resolve()
-        content_hash = _quick_hash(xml_path)
-        source_url = source_cfg["url"]
-        print(f"[offline] using {xml_path}")
+        file_path = args.offline.resolve()
+        content_hash = _quick_hash(file_path)
+        source_url = source_cfg["urls"].get("xml") or source_cfg["urls"].get("html") or source_cfg["urls"].get("pdf")
+
+        ext = file_path.suffix.lower()
+        if ext == ".pdf":
+            doc_format = "pdf"
+        elif ext in (".html", ".htm"):
+            doc_format = "html"
+        else:
+            doc_format = "xml"
+
+        print(f"[offline] using {file_path} (format: {doc_format})")
     else:
         print(f"[fetch] downloading {source_cfg['name']} ...")
-        fetched = fetch_easa_xml(args.data_dir, source_cfg["url"], source_cfg["external_id"])
-        xml_path = fetched.path
+        fetched = fetch_easa_document(args.data_dir, source_cfg["urls"], source_cfg["external_id"])
+        file_path = fetched.path
         content_hash = fetched.content_hash
         source_url = fetched.url
-        print(f"[fetch] saved to {xml_path} ({content_hash[:8]})")
+        doc_format = fetched.format
+        print(f"[fetch] saved to {file_path} ({content_hash[:8]}, format: {doc_format})")
 
     print("[parse+persist] running ...")
     report = ingest(
-        xml_path,
+        file_path,
         source_name=source_cfg["name"],
         source_url=source_url,
         external_id=source_cfg["external_id"],
         content_hash=content_hash,
+        doc_format=doc_format,
+        use_smart_parser=source_cfg.get("use_smart_parser", True),
         is_latest=True,
     )
     print(f"[done] {report}")

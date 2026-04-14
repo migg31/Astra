@@ -1,4 +1,4 @@
-# Astra (v0.6.0)
+# Astra (v0.7.0)
 
 Aviation Certification platform for EASA regulatory framework.
 
@@ -8,20 +8,22 @@ Full-stack application covering HARVEST, EXPLORE, and **ASK (RAG)** layers.
 
 | Layer | Status | Detail |
 |---|---|---|
-| HARVEST | ✅ | EASA XML parser — Part 21 (1 095 nodes) + CS-25 + CS-ACNS (503 nodes) |
-| DATA | ✅ | PostgreSQL + pgvector (Vector) |
-| KNOWLEDGE | ✅ | 5 500+ regulatory nodes (IR / AMC / GM / CS), 2 600+ edges |
+| HARVEST | ✅ | EASA XML + PDF + local JSON — multi-format pipeline with LLM enrichment |
+| DATA | ✅ | PostgreSQL + pgvector |
+| KNOWLEDGE | ✅ | 5 500+ regulatory nodes (IR / AMC / GM / CS), 2 600+ edges + LLM-extracted relations |
 | EXPLORE UI | ✅ | React 3-panel: resizable sidebar / article / neighbors — with version history drawer |
 | ASK UI | ✅ | RAG-based AI assistant with anti-hallucination safeguards |
-| ADMIN | ✅ | Admin Console for system health, stats, and harvester control |
+| ADMIN | ✅ | Admin Console — harvester control, source config (XML/PDF/JSON), catalog management |
 
 ### Key Features
-- **Admin Console**: Real-time monitoring of PostgreSQL, pgvector, and Ollama (Mistral/Nomic).
+- **Admin Console**: Real-time monitoring of PostgreSQL, pgvector, and LLM provider (Groq/Ollama).
 - **Interactive Harvester**: Trigger regulatory sync directly from the UI with `enabled` flag support.
+- **LLM Enrichment Pipeline**: `pdf_to_json.py` + `llm_enrich.py` — converts narrative PDFs to semantically typed JSON (requirement/guidance/definition) with cross-reference relation extraction via Groq llama-3.3-70b.
+- **3 harvest formats**: `xml` (EASA OOXML/DOCX), `pdf` (EASA PDF), `json` (local Astra JSON, hash-tracked).
 - **Regulatory Explorer**: DocPicker sidebar (EASA framework by domain), resizable tree panel, HTML article rendering with clickable cross-references, and a doc info page on first load.
 - **Version History drawer**: Flat dense list of all amendments/editions pinned to the bottom of the sidebar, collapsible, with EASA download links (with confirmation).
-- **Neighbors Panel v2**: Collapsible relation groups sorted by priority (IR→AMC→GM→CS), color-coded badges.
-- **AI Assistant**: Query Part 21 using natural language with strict sourcing and disclaimers.
+- **Neighbors Panel**: Collapsible relation groups sorted by priority (IR→AMC→GM→CS), color-coded badges, including LLM-extracted inter-document cross-references.
+- **AI Assistant**: Query regulations using natural language with strict sourcing and disclaimers.
 
 ## Prerequisites
 

@@ -36,25 +36,16 @@ export function articleCode(node: NodeSummary): string {
   const appMatch = node.reference_code.match(/\bto\s+(?:AMC\d*|GM\d*|CS)\s+([\w.]+)/i);
   if (appMatch) return appMatch[1].replace(/\([^)]*\).*$/, "").trim();
 
-  // CS-25 standalone appendices: reference_code is "Appendix N – title" with no parent ref.
-  // If hierarchy_path has a parent article segment (e.g. "AMC 25.1309"), group under it.
+  // Standalone appendices: group under §Appendices (hierarchy_path contains no article codes)
   if (/^Appendix\b/i.test(node.reference_code)) {
-    const hparts = node.hierarchy_path.split(" / ");
-    // Walk backwards (skip the appendix itself) to find nearest ancestor that is an article code
-    for (let i = hparts.length - 2; i >= 1; i--) {
-      const seg = hparts[i];
-      // Skip heading-group segments ("Appendices", section headings, subpart headings)
-      if (/^(Appendices|Appendix)\s*$/i.test(seg)) continue;
-      if (/^(SUBPART|SECTION)\b/i.test(seg)) break;
-      if (/^(GENERAL|INSTRUMENTS|LIGHTS|SAFETY|MISCELLANEOUS|ELECTRICAL|PERFORMANCE|GROUND|FLIGHT|FUEL|OIL|COOLING|EXHAUST|POWERPLANT|FATIGUE|CONTROL|LANDING|PERSONNEL|EMERGENCY|VENTILATION|PRESSURI|FIRE|MARKING|OPERATING|AEROPLANE|SUPPLEMENTARY|Display|DATA LINK|VOICE)/i.test(seg)) break;
-      const code = seg.replace(/^(?:AMC\d*|GM\d*|CS)\s+/, "").replace(/\s*\(.*$/, "").trim();
-      if (/\d/.test(code) && !/^Appendix\b/i.test(code)) return code;
-    }
     return "§Appendices";
   }
 
   // Strip leading type prefix: "AMC1 ", "GM2 ", "CS ", "AMC ", "GM " …
-  const bare = node.reference_code.replace(/^(?:AMC\d*|GM\d*|CS)\s+/, "");
+  // Also strip ACNS-style variant number: "AMC 1.ACNS.X" → "ACNS.X" (the "1." is a variant, not part of the code)
+  const bare = node.reference_code
+    .replace(/^(?:AMC\d*|GM\d*|CS)\s+/, "")
+    .replace(/^\d+\.(?=[A-Z])/, "");
   // Strip trailing sub-paragraph refs: "(a)", "(b)(1)", "(a);(b)" …
   const noParens = bare.replace(/\s*\(.*$/, "").trim();
   // Strip trailing descriptive text after the article number (e.g. "25.1302 Explanatory material")
@@ -137,38 +128,16 @@ function sortNodes(ns: NodeSummary[]): void {
 }
 
 /**
- * Group a flat list of nodes into Subpart → Section → Article → [nodes].
- * Documents without sections (e.g. CS-25) produce a single unnamed section per subpart.
- * Expects nodes pre-filtered by document source and active types.
+ * Generic tree builder — source-agnostic.
+ *
+ * hierarchy_path contract (enforced by all parsers):
+ *   parts[0] = document root  (always present)
+ *   parts[1] = subpart        (SUBPART X, SECTION Y, OPERATIONS, etc.)
+ *   parts[2] = section        (optional sub-level within a subpart)
+ *
+ * Article reference_code is NOT part of hierarchy_path.
+ * buildTree groups by parts[1] (subpart) then parts[2] (section).
  */
-/**
- * CS-25 Subpart from article number (25.NNN).
- * Ranges per EASA CS-25 table of contents.
- */
-function cs25Subpart(code: string): string {
-  // 25J... = Subpart J APU articles (CS 25J901, CS 25J1011, AMC 25J...)
-  if (/\b25J\d/i.test(code)) return "Subpart J — Auxiliary Power Unit Installations";
-  // 25A... where A is a letter appendix prefix (not the subpart J articles)
-  if (/\b25[A-IK-Z]\d/i.test(code)) return "Appendices to CS-25";
-  // AMC to Appendix... → "Appendices to CS-25"
-  if (/^AMC\s+to\s+App/i.test(code)) return "Appendices to CS-25";
-  // General AMCs: AMC 25-N, AMC No. → "General AMCs"
-  if (/25-\d/.test(code) || /^AMC\s+No/i.test(code)) return "General AMCs";
-
-  const m = code.match(/25\.(\d+)/);
-  if (!m) return "General AMCs";
-  const n = parseInt(m[1], 10);
-  if (n <= 45)   return "Subpart A — General";
-  if (n <= 253)  return "Subpart B — Flight";
-  if (n <= 519)  return "Subpart C — Structure";
-  if (n <= 899)  return "Subpart D — Design and Construction";
-  if (n <= 1207) return "Subpart E — Powerplant";
-  if (n <= 1461) return "Subpart F — Equipment";
-  if (n <= 1593) return "Subpart G — Operating Limitations and Information";
-  if (n <= 1871) return "Subpart H — Electrical Wiring Interconnection Systems";
-  if (n <= 1963) return "Subpart J — Auxiliary Power Unit Installations";
-  return "Appendices to CS-25";
-}
 
 /** Canonical label map: normalizedKey -> preferred display label */
 function canonicalLabel(
@@ -179,7 +148,6 @@ function canonicalLabel(
   if (!labelMap.has(key)) {
     labelMap.set(key, raw);
   } else {
-    // Prefer the ALL-CAPS version (PDF source, more authoritative)
     const existing = labelMap.get(key)!;
     if (raw === raw.toUpperCase() && existing !== raw) {
       labelMap.set(key, raw);
@@ -189,51 +157,29 @@ function canonicalLabel(
 }
 
 export function buildTree(nodes: NodeSummary[]): SubpartGroup[] {
-  // bySubpart > bySection > byArticle — keyed by normalized uppercase
   const bySubpart = new Map<string, Map<string, Map<string, NodeSummary[]>>>();
   const subpartLabels = new Map<string, string>();
   const sectionLabels = new Map<string, string>();
+  const subpartInsertOrder = new Map<string, number>();
 
   for (const node of nodes) {
     if (node.node_type === "GROUP") continue;
     const parts = node.hierarchy_path.split(" / ");
 
-    const root = parts[0] ?? "";
-    const structuralParts = parts.length > 1 ? parts.slice(1) : parts;
+    // parts[1] = subpart (or "Other" if node sits directly under root with no structural heading)
+    const subpartRaw = parts.length >= 2 ? parts[1] : "Other";
 
-    // CS-25: use hierarchy_path parts[1] as subpart when it's a SUBPART heading.
-    // Fall back to cs25Subpart() only for nodes without an explicit SUBPART in their path.
-    const isCS25 = /\bCS-?25\b/i.test(root);
-    const cs25PathSubpart = isCS25 && parts.length >= 2 && /^SUBPART\b/i.test(parts[1])
-      ? parts[1]
-      : undefined;
-    const explicitSubpart = isCS25
-      ? undefined
-      : structuralParts.find((p) => /^\(?SUBPART/i.test(p));
-    const subpartRaw = isCS25
-      ? (cs25PathSubpart ?? cs25Subpart(articleCode(node)))
-      : (explicitSubpart ?? "Other");
-
-    // For CS-25: hierarchy_path is Doc / SUBPART / SECTION / article (4 parts)
-    // The section heading (e.g. "GENERAL", "INSTRUMENTS: INSTALLATION") is parts[2].
-    // Only use it as section when it's not a SUBPART header and not the article itself.
-    let sectionRaw: string;
-    if (isCS25) {
-      const candidate = parts.length >= 4 ? parts[2] : "";
-      const isSubpartSeg = /^\(?SUBPART/i.test(candidate);
-      const isArticleSeg = /^\d|^(?:AMC|GM|CS|IR)\b/i.test(candidate) || /^Appendix\b/i.test(candidate);
-      sectionRaw = (!isSubpartSeg && !isArticleSeg && candidate) ? candidate : "";
-    } else {
-      sectionRaw = explicitSubpart
-        ? (structuralParts.find((p) => /^SECTION\s+\d/i.test(p)) ?? "")
-        : (structuralParts.length > 1 ? structuralParts[1] : "");
-    }
+    // parts[2] = section (optional)
+    const sectionRaw = parts.length >= 3 ? parts[2] : "";
 
     const subpartKey = canonicalLabel(subpartLabels, subpartRaw);
     const sectionKey = canonicalLabel(sectionLabels, sectionRaw);
     const art = articleCode(node);
 
-    if (!bySubpart.has(subpartKey)) bySubpart.set(subpartKey, new Map());
+    if (!bySubpart.has(subpartKey)) {
+      subpartInsertOrder.set(subpartKey, subpartInsertOrder.size);
+      bySubpart.set(subpartKey, new Map());
+    }
     const bySec = bySubpart.get(subpartKey)!;
     if (!bySec.has(sectionKey)) bySec.set(sectionKey, new Map());
     const byArt = bySec.get(sectionKey)!;
@@ -257,44 +203,10 @@ export function buildTree(nodes: NodeSummary[]): SubpartGroup[] {
       sections.push({ name: sectionName, articles: sortArticles(articleGroups) });
     }
 
-    // Merge articles from the unnamed section ("") into named sections when the same
-    // articleCode already exists there (PDF CS node + XML AMC/GM node deduplication)
-    const unnamedIdx = sections.findIndex((s) => !s.name);
-    if (unnamedIdx !== -1 && sections.length > 1) {
-      const unnamed = sections[unnamedIdx];
-      const namedSections = sections.filter((_, i) => i !== unnamedIdx);
-      const namedArticleKeys = new Set(
-        namedSections.flatMap((s) => s.articles.map((a) => a.articleCode))
-      );
-      const stillUnnamed: ArticleGroup[] = [];
-      for (const art of unnamed.articles) {
-        if (namedArticleKeys.has(art.articleCode)) {
-          // Merge nodes into whichever named section has this article
-          for (const ns of namedSections) {
-            const target = ns.articles.find((a) => a.articleCode === art.articleCode);
-            if (target) {
-              target.nodes.push(...art.nodes);
-              sortNodes(target.nodes);
-              break;
-            }
-          }
-        } else {
-          stillUnnamed.push(art);
-        }
-      }
-      const merged: SectionGroup[] = [];
-      if (stillUnnamed.length > 0) merged.push({ name: "", articles: sortArticles(stillUnnamed) });
-      merged.push(...namedSections);
-      sections.length = 0;
-      sections.push(...merged);
-    }
-
-    // Sort sections by minimum article number they contain (= document order).
-    // Unnamed section ("") goes first; ties fall back to name localeCompare.
+    // Sort sections: unnamed ("") first, then by minimum article number (document order)
     const minArticleNum = (s: SectionGroup): number => {
       let min = Infinity;
       for (const art of s.articles) {
-        // Concatenate all digit runs: "25.1305" → "251305", "21.A.91" → "2191"
         const digits = art.articleCode.replace(/[^0-9]/g, "");
         if (digits) min = Math.min(min, parseInt(digits, 10));
       }
@@ -308,40 +220,39 @@ export function buildTree(nodes: NodeSummary[]): SubpartGroup[] {
       return diff !== 0 ? diff : a.name.localeCompare(b.name);
     });
 
-    // Flat article list across all sections (for search results & leaf counts)
     const allArticles = sections.flatMap((s) => s.articles);
-
     result.push({ name: subpartName, sections, articles: allArticles });
   }
 
-  // Canonical order for CS-25 subparts (matches PDF ToC)
-  const CS25_ORDER = [
-    "Subpart A — General",
-    "Subpart B — Flight",
-    "Subpart C — Structure",
-    "Subpart D — Design and Construction",
-    "Subpart E — Powerplant",
-    "Subpart F — Equipment",
-    "Subpart G — Operating Limitations and Information",
-    "Subpart H — Electrical Wiring Interconnection Systems",
-    "Subpart J — Auxiliary Power Unit Installations",
-    "Appendices to CS-25",
-    "General AMCs",
-  ];
-  const cs25OrderMap = new Map(CS25_ORDER.map((n, i) => [n.toUpperCase(), i]));
-  const isCS25Result = result.some((s) => cs25OrderMap.has(s.name.toUpperCase()));
-  if (isCS25Result) {
-    result.sort((a, b) => {
-      const ia = cs25OrderMap.get(a.name.toUpperCase()) ?? 99;
-      const ib = cs25OrderMap.get(b.name.toUpperCase()) ?? 99;
-      return ia !== ib ? ia - ib : a.name.localeCompare(b.name);
-    });
-  } else {
-    result.sort((a, b) => {
-      if (a.name === "Other") return 1;
-      if (b.name === "Other") return -1;
-      return a.name.localeCompare(b.name);
-    });
-  }
+  // Sort subparts: numeric-prefixed ones sort numerically, GENERAL/Other last
+  const leadingNum = (s: string): number => {
+    const m = s.match(/^(\d+)[\s.]/);
+    return m ? parseInt(m[1], 10) : -1;
+  };
+  result.sort((a, b) => {
+    const isTrailingA = a.name === "Other" || /^GENERAL\b/i.test(a.name);
+    const isTrailingB = b.name === "Other" || /^GENERAL\b/i.test(b.name);
+    if (isTrailingA && !isTrailingB) return 1;
+    if (!isTrailingA && isTrailingB) return -1;
+    if (isTrailingA && isTrailingB) {
+      if (/^GENERAL\b/i.test(a.name) && b.name === "Other") return -1;
+      if (a.name === "Other" && /^GENERAL\b/i.test(b.name)) return 1;
+      return 0;
+    }
+    // Numeric subparts (e.g. "1 PREAMBLE", "10 OPERATIONAL CRITERIA") sort numerically
+    const na = leadingNum(a.name), nb = leadingNum(b.name);
+    if (na >= 0 && nb >= 0) {
+      if (na !== nb) return na - nb;
+      // Same leading number (e.g. "1 PREAMBLE" vs "1 INTRODUCTION" from different annexes)
+      // → preserve insertion order using the keys stored in subpartInsertOrder
+      const aKey = a.name.toUpperCase().replace(/\s+/g, " ").trim();
+      const bKey = b.name.toUpperCase().replace(/\s+/g, " ").trim();
+      return (subpartInsertOrder.get(aKey) ?? 0) - (subpartInsertOrder.get(bKey) ?? 0);
+    }
+    if (na >= 0) return -1;
+    if (nb >= 0) return 1;
+    return a.name.localeCompare(b.name);
+  });
+
   return result;
 }

@@ -12,13 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.schemas import RegulatorySourceCreate, RegulatorySourceOut, RegulatorySourceUpdate
 from backend.database.connection import get_session
-from backend.rag.store import count as count_embeddings
+from backend.rag.store import count as count_embeddings, purge as purge_store
 from backend.harvest.ingest import (
     ingest,
-    fetch_easa_xml,
-    REGULATORY_SOURCES,
+    _load_sources_from_db,
 )
-from backend.harvest.catalog import CATALOG
+from backend.harvest.easa_fetcher import fetch_easa_document
 from backend.rag.ingest_embeddings import main as run_embedding_pipeline
 from backend.rag.embedder import _get_client as get_ollama_client, EMBED_MODEL
 from backend.config import settings
@@ -94,30 +93,33 @@ class SystemConfig(BaseModel):
 
 @router.get("/stats", response_model=SystemStats)
 async def get_stats(db: AsyncSession = Depends(get_session)):
-    """Fetch global statistics from PostgreSQL and ChromaDB."""
-    # Postgres stats
-    nodes = await db.scalar(text("SELECT COUNT(*) FROM regulatory_nodes"))
-    edges = await db.scalar(text("SELECT COUNT(*) FROM regulatory_edges"))
-    docs = await db.scalar(text("SELECT COUNT(*) FROM harvest_documents"))
-    
-    # DB Size (approximate)
-    db_size = await db.scalar(text("SELECT pg_database_size(current_database()) / 1024.0 / 1024.0"))
-    
-    # pgvector stats
+    """Fetch global statistics from PostgreSQL — single batched query."""
+    row = (await db.execute(text("""
+        SELECT
+            (SELECT COUNT(*) FROM regulatory_nodes)             AS nodes,
+            (SELECT COUNT(*) FROM regulatory_edges)             AS edges,
+            (SELECT COUNT(*) FROM harvest_documents)            AS docs,
+            (SELECT COUNT(*) FROM regulatory_node_versions)     AS snapshots,
+            (SELECT COUNT(*) FROM document_harvest_runs)        AS runs,
+            (SELECT MAX(fetched_at) FROM document_harvest_runs) AS last_harvest,
+            pg_database_size(current_database()) / 1024.0 / 1024.0 AS db_size_mb,
+            pg_total_relation_size('node_embeddings') / 1024.0 / 1024.0 AS vector_size_mb
+    """))).mappings().first()
+
     embeds = 0
-    vector_size_mb = 0.0
     try:
         embeds = count_embeddings()
-        vector_size_mb = float(await db.scalar(text(
-            "SELECT pg_total_relation_size('node_embeddings') / 1024.0 / 1024.0"
-        )) or 0)
     except Exception:
         pass
-        
-    # Versioning stats
-    snapshots = await db.scalar(text("SELECT COUNT(*) FROM regulatory_node_versions"))
-    runs = await db.scalar(text("SELECT COUNT(*) FROM document_harvest_runs"))
-    last_harvest = await db.scalar(text("SELECT MAX(fetched_at) FROM document_harvest_runs"))
+
+    nodes       = row["nodes"]
+    edges       = row["edges"]
+    docs        = row["docs"]
+    snapshots   = row["snapshots"]
+    runs        = row["runs"]
+    last_harvest = row["last_harvest"]
+    db_size      = row["db_size_mb"]
+    vector_size_mb = float(row["vector_size_mb"] or 0)
 
     return SystemStats(
         nodes_count=nodes or 0,
@@ -209,8 +211,8 @@ async def get_config():
     from backend.config import settings
     
     db_url = urlparse(settings.database_url)
-    # Use part21 as the default reference for config display
-    default_source = REGULATORY_SOURCES["part21"]
+    first_source = next(iter(_load_sources_from_db().values()), {})
+    default_url = first_source.get("urls", {}).get("xml") or first_source.get("url", "")
     
     base = settings.ollama_base_url.lower()
     if "groq.com" in base:
@@ -223,8 +225,8 @@ async def get_config():
         provider = "other"
 
     return SystemConfig(
-        harvester_source_url=default_source["url"],
-        harvester_name=default_source["name"],
+        harvester_source_url=default_url,
+        harvester_name=first_source.get("name", ""),
         harvester_frequency="monthly",
         harvester_format="MIXED",
         data_directory=str(Path("data").resolve()),
@@ -240,7 +242,7 @@ async def get_harvester_status():
     """Get the current state of the ingestion process."""
     return _status
 
-async def _run_harvester_task_multi(source_cfgs: list[dict]):
+async def _run_harvester_task_multi(source_cfgs: list[dict], reindex_vectors: bool = False):
     """Background task: run ingestion sequentially for each source in the list."""
     global _status
     async with _lock:
@@ -264,13 +266,15 @@ async def _run_harvester_task_multi(source_cfgs: list[dict]):
                 data_dir = Path("data")
 
                 # Step 1 — Fetch
-                _log(f"[{name}] Fetching XML from EASA...")
+                _log(f"[{name}] Fetching document from EASA...")
                 try:
+                    # Support both single 'url' (from DB) and 'urls' dict (from REGULATORY_SOURCES)
+                    urls = src_cfg.get("urls") or {"xml": src_cfg.get("url")}
                     fetched = await loop.run_in_executor(
                         None,
-                        lambda cfg=src_cfg: fetch_easa_xml(data_dir, cfg["url"], cfg["external_id"]),
+                        lambda u=urls: fetch_easa_document(data_dir, u, src_cfg["external_id"]),
                     )
-                    _log(f"[{name}] Downloaded: {fetched.path.name} ({fetched.path.stat().st_size // 1024} KB)")
+                    _log(f"[{name}] Downloaded: {fetched.path.name} ({fetched.path.stat().st_size // 1024} KB, format: {fetched.format})")
                     _log(f"[{name}] Content hash: {fetched.content_hash[:12]}...")
                 except Exception as e:
                     _log(f"[{name}] ERROR during fetch: {e}")
@@ -278,7 +282,7 @@ async def _run_harvester_task_multi(source_cfgs: list[dict]):
                     continue
 
                 # Step 2 — Ingest into Postgres
-                _log(f"[{name}] Parsing XML and upserting PostgreSQL...")
+                _log(f"[{name}] Parsing {fetched.format.upper()} and upserting PostgreSQL...")
                 try:
                     report = await loop.run_in_executor(
                         None,
@@ -288,13 +292,18 @@ async def _run_harvester_task_multi(source_cfgs: list[dict]):
                             source_url=f.url,
                             external_id=f.external_id,
                             content_hash=f.content_hash,
+                            doc_format=f.format,
+                            use_smart_parser=cfg.get("use_smart_parser", True),
+                            use_narrative_parser=cfg.get("use_narrative_parser", False),
                             seen_keys=seen_keys,
                             is_latest=True,
+                            progress_callback=_log
                         ),
                     )
                     _log(f"[{name}] Nodes upserted  : {report.get('nodes', 0)}")
                     _log(f"[{name}]   added          : {report.get('nodes_added', 0)}")
                     _log(f"[{name}]   modified       : {report.get('nodes_modified', 0)}")
+                    _log(f"[{name}]   deleted        : {report.get('nodes_deleted', 0)}")
                     _log(f"[{name}]   unchanged      : {report.get('nodes_unchanged', 0)}")
                     edges_new = report.get('edges_inserted', 0)
                     edges_skip = report.get('edges_skipped', 0)
@@ -312,16 +321,19 @@ async def _run_harvester_task_multi(source_cfgs: list[dict]):
                 _status.completed.append(name)
                 _log(f"[{name}] Done.")
 
-            # Step 3 — Re-index vectors (once, after all sources)
-            _log("=== Re-indexing vectors (all sources) ===")
-            _log("Fetching nodes from PostgreSQL (excluding GROUP + empty)...")
-            try:
-                await loop.run_in_executor(None, lambda: run_embedding_pipeline(on_progress=_log))
-                _log("Vector index rebuilt successfully.")
-            except Exception as e:
-                _log(f"ERROR during vector re-indexing: {e}")
-                _log("Hint: context length exceeded — check MAX_EMBED_CHARS in ingest_embeddings.py")
-                _status.error = f"vector re-index failed — {e}"
+            # Step 3 — Re-index vectors (optional)
+            if reindex_vectors:
+                _log("=== Re-indexing vectors (all sources) ===")
+                _log("Fetching nodes from PostgreSQL (excluding GROUP + empty)...")
+                try:
+                    await loop.run_in_executor(None, lambda: run_embedding_pipeline(on_progress=_log))
+                    _log("Vector index rebuilt successfully.")
+                except Exception as e:
+                    _log(f"ERROR during vector re-indexing: {e}")
+                    _log("Hint: context length exceeded — check MAX_EMBED_CHARS in ingest_embeddings.py")
+                    _status.error = f"vector re-index failed — {e}"
+            else:
+                _log("=== Vector re-indexing skipped (pass reindex_vectors=true to enable) ===")
 
             _log(f"=== Harvest complete: {len(_status.completed)}/{len(source_cfgs)} sources ===")
 
@@ -355,6 +367,22 @@ async def _run_embeddings_task():
             _status.last_run_at = datetime.now(timezone.utc)
 
 
+@router.post("/purge", status_code=200)
+async def purge_database():
+    """Truncate all indexed data (nodes, documents, snapshots, embeddings).
+    Preserves regulations, doc_categories, doc_domains, source_files."""
+    if _status.is_running:
+        raise HTTPException(status_code=409, detail="A harvest/embed task is running. Wait for it to finish before purging.")
+    deleted = purge_store()
+    return {
+        "ok": True,
+        "deleted": deleted,
+        "message": f"Purged: {deleted.get('regulatory_nodes', 0)} nodes, "
+                   f"{deleted.get('harvest_documents', 0)} documents, "
+                   f"{deleted.get('node_embeddings', 0)} embeddings.",
+    }
+
+
 @router.post("/embeddings/run", status_code=202)
 async def run_embeddings(background_tasks: BackgroundTasks):
     """Trigger embedding re-indexing pipeline (no harvest)."""
@@ -371,8 +399,8 @@ async def list_sources(db: AsyncSession = Depends(get_session)):
     """List all regulatory sources from the database."""
     rows = await db.execute(
         text("""
-            SELECT source_id, name, base_url, external_id, format, frequency, enabled, last_sync_at
-            FROM harvest_sources
+            SELECT source_id, name, base_url, urls, external_id, format, frequency, enabled, last_sync_at
+            FROM source_files
             ORDER BY name
         """)
     )
@@ -382,13 +410,19 @@ async def list_sources(db: AsyncSession = Depends(get_session)):
 @router.post("/sources", response_model=RegulatorySourceOut, status_code=201)
 async def create_source(body: RegulatorySourceCreate, db: AsyncSession = Depends(get_session)):
     """Add a new regulatory source."""
+    # Ensure urls is converted to dict for JSONB column
+    data = body.model_dump()
+    if data.get("urls"):
+        import json
+        data["urls"] = json.dumps(data["urls"])
+
     row = await db.execute(
         text("""
-            INSERT INTO harvest_sources (name, base_url, external_id, format, frequency, enabled)
-            VALUES (:name, :base_url, :external_id, :format, :frequency, :enabled)
-            RETURNING source_id, name, base_url, external_id, format, frequency, enabled, last_sync_at
+            INSERT INTO source_files (name, base_url, urls, external_id, format, frequency, enabled)
+            VALUES (:name, :base_url, :urls, :external_id, :format, :frequency, :enabled)
+            RETURNING source_id, name, base_url, urls, external_id, format, frequency, enabled, last_sync_at
         """),
-        body.model_dump(),
+        data,
     )
     await db.commit()
     return RegulatorySourceOut(**dict(row.fetchone()._mapping))
@@ -405,14 +439,18 @@ async def update_source(
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
 
+    if "urls" in updates and updates["urls"]:
+        import json
+        updates["urls"] = json.dumps(updates["urls"])
+
     set_clause = ", ".join(f"{k} = :{k}" for k in updates)
     updates["source_id"] = source_id
     row = await db.execute(
         text(f"""
-            UPDATE harvest_sources
+            UPDATE source_files
             SET {set_clause}
             WHERE source_id = :source_id
-            RETURNING source_id, name, base_url, external_id, format, frequency, enabled, last_sync_at
+            RETURNING source_id, name, base_url, urls, external_id, format, frequency, enabled, last_sync_at
         """),
         updates,
     )
@@ -436,7 +474,7 @@ async def delete_source(source_id: str, db: AsyncSession = Depends(get_session))
             detail=f"Cannot delete: {docs} document(s) ingested from this source",
         )
     await db.execute(
-        text("DELETE FROM harvest_sources WHERE source_id = :sid"), {"sid": source_id}
+        text("DELETE FROM source_files WHERE source_id = :sid"), {"sid": source_id}
     )
     await db.commit()
 
@@ -449,7 +487,7 @@ async def get_harvester_sources(db: AsyncSession = Depends(get_session)):
     rows = await db.execute(
         text("""
             SELECT source_id::text AS id, name, external_id, enabled
-            FROM harvest_sources
+            FROM source_files
             ORDER BY name
         """)
     )
@@ -457,7 +495,8 @@ async def get_harvester_sources(db: AsyncSession = Depends(get_session)):
 
 
 class HarvesterRunRequest(BaseModel):
-    sources: List[str] = ["part21"]
+    sources: List[str] = []
+    reindex_vectors: bool = False
 
 
 @router.post("/harvester/run")
@@ -473,28 +512,47 @@ async def start_harvester(
     source_cfgs: list[dict] = []
     for source in body.sources:
         row = await db.execute(
-            text("SELECT name, base_url, external_id, enabled FROM harvest_sources WHERE external_id = :eid"),
+            text("SELECT name, base_url, external_id, enabled FROM source_files WHERE external_id = :eid"),
             {"eid": source},
         )
         src = row.fetchone()
         if src is None:
-            if source not in REGULATORY_SOURCES:
-                raise HTTPException(status_code=404, detail=f"Source '{source}' not found")
-            source_cfgs.append(REGULATORY_SOURCES[source])
-        else:
-            if not src.enabled:
-                _log(f"[{src.name}] Skipped (disabled)")
-                continue
-            source_cfgs.append({"name": src.name, "url": src.base_url, "external_id": src.external_id})
+            raise HTTPException(status_code=404, detail=f"Source '{source}' not found")
+        if not src.enabled:
+            _log(f"[{src.name}] Skipped (disabled)")
+            continue
+        db_sources = _load_sources_from_db()
+        db_cfg = db_sources.get(src.external_id, {})
+        cfg = {
+            "name": src.name,
+            "url": src.base_url,
+            "external_id": src.external_id,
+            "urls": db_cfg.get("urls", {"xml": src.base_url}),
+            "use_smart_parser": db_cfg.get("use_smart_parser", True),
+            "use_narrative_parser": db_cfg.get("use_narrative_parser", False),
+        }
+        source_cfgs.append(cfg)
 
-    background_tasks.add_task(_run_harvester_task_multi, source_cfgs)
+    background_tasks.add_task(_run_harvester_task_multi, source_cfgs, body.reindex_vectors)
     names = ", ".join(c["name"] for c in source_cfgs)
     return {"message": f"Harvester started for: {names}"}
+
+
+@router.get("/catalog/meta")
+async def get_catalog_meta(db: AsyncSession = Depends(get_session)):
+    """Return available categories and domains for the catalog admin UI."""
+    cats = await db.execute(text("SELECT id, label FROM doc_categories ORDER BY sort_order"))
+    doms = await db.execute(text("SELECT id, label FROM doc_domains ORDER BY sort_order"))
+    return {
+        "categories": [{"id": r[0], "label": r[1]} for r in cats],
+        "domains":    [{"id": r[0], "label": r[1]} for r in doms],
+    }
 
 
 @router.get("/catalog")
 async def get_catalog(db: AsyncSession = Depends(get_session)):
     """Return the full EASA regulatory catalog with live indexing status from DB."""
+    # ── Fetch all indexed harvest documents ──────────────────────────────────
     rows = await db.execute(text("""
         SELECT
             hd.title,
@@ -516,8 +574,6 @@ async def get_catalog(db: AsyncSession = Depends(get_session)):
         LEFT JOIN regulatory_nodes rn ON rn.source_doc_id = hd.doc_id
         GROUP BY hd.doc_id, hd.title, hd.version_label, hd.pub_date, hd.amended_by
     """))
-
-    # All indexed documents as list of dicts (preserve original title for frontend matching)
     docs = [
         {
             "title_raw": row["title"] or "",
@@ -532,55 +588,151 @@ async def get_catalog(db: AsyncSession = Depends(get_session)):
     ]
 
     def match_doc(pattern: str) -> dict | None:
-        """Return first doc whose title matches the SQL ILIKE pattern (%-wildcard)."""
         import re
-        # Convert SQL ILIKE pattern (%foo%bar%) to regex
         regex = re.compile(
             ".*".join(re.escape(p) for p in pattern.lower().split("%") if p),
             re.IGNORECASE,
         )
-        # Prefer docs with most nodes
         candidates = [d for d in docs if regex.search(d["title"])]
         if not candidates:
             return None
         return max(candidates, key=lambda d: d["node_count"])
 
-    # Pre-fetch per-Part node counts for entries with ref_code_pattern
+    # ── Fetch catalog entries from DB ─────────────────────────────────────────
+    src_rows = await db.execute(text("""
+        SELECT ds.id, ds.name, ds.short, ds.category_id, ds.domain_id,
+               ds.description, ds.easa_url, ds.harvest_key,
+               ds.doc_title_pattern, ds.ref_code_pattern,
+               ds.is_active, ds.sort_order
+        FROM regulations ds
+        ORDER BY ds.sort_order, ds.id
+    """))
+    entries = list(src_rows.mappings())
+
+    # ── Per-Part node counts + source_root — single batched query ───────────────
     part_counts: dict[str, int] = {}
-    for entry in CATALOG:
-        if entry.doc_title_pattern and entry.ref_code_pattern:
-            row = await db.execute(text("""
-                SELECT COUNT(rn.node_id)
-                FROM regulatory_nodes rn
-                JOIN harvest_documents hd ON hd.doc_id = rn.source_doc_id
-                WHERE hd.title ILIKE :title_pat
-                  AND rn.node_type != 'GROUP'
-                  AND rn.reference_code ~ :ref_pat
-            """), {"title_pat": entry.doc_title_pattern, "ref_pat": entry.ref_code_pattern})
-            part_counts[entry.id] = int(row.scalar() or 0)
+    part_roots: dict[str, str] = {}
+    patterned = [e for e in entries if e["doc_title_pattern"] and e["ref_code_pattern"]]
+    if patterned:
+        ids        = [e["id"] for e in patterned]
+        title_pats = [e["doc_title_pattern"] for e in patterned]
+        ref_pats   = [e["ref_code_pattern"] for e in patterned]
+        from sqlalchemy import bindparam, ARRAY, String
+        batch_rows = await db.execute(
+            text("""
+                SELECT
+                    p.entry_id,
+                    COUNT(rn.node_id) AS node_count,
+                    (
+                        SELECT SPLIT_PART(rn2.hierarchy_path, ' / ', 1)
+                        FROM regulatory_nodes rn2
+                        JOIN harvest_documents hd2 ON hd2.doc_id = rn2.source_doc_id
+                        WHERE hd2.title ILIKE p.title_pat
+                          AND rn2.reference_code ~ p.ref_pat
+                          AND rn2.hierarchy_path IS NOT NULL AND rn2.hierarchy_path != ''
+                        GROUP BY SPLIT_PART(rn2.hierarchy_path, ' / ', 1)
+                        ORDER BY COUNT(*) DESC LIMIT 1
+                    ) AS part_root
+                FROM UNNEST(
+                    CAST(:ids AS text[]), CAST(:title_pats AS text[]), CAST(:ref_pats AS text[])
+                ) AS p(entry_id, title_pat, ref_pat)
+                LEFT JOIN harvest_documents hd ON hd.title ILIKE p.title_pat
+                LEFT JOIN regulatory_nodes rn
+                    ON rn.source_doc_id = hd.doc_id
+                   AND rn.node_type != 'GROUP'
+                   AND rn.reference_code ~ p.ref_pat
+                GROUP BY p.entry_id, p.title_pat, p.ref_pat
+            """).bindparams(
+                bindparam("ids",        value=ids,        type_=ARRAY(String)),
+                bindparam("title_pats", value=title_pats, type_=ARRAY(String)),
+                bindparam("ref_pats",   value=ref_pats,   type_=ARRAY(String)),
+            )
+        )
+        for r in batch_rows.mappings():
+            part_counts[r["entry_id"]] = int(r["node_count"] or 0)
+            part_roots[r["entry_id"]] = r["part_root"] or ""
+
+    # ── Fetch source_files enabled status + source_id ──────────────────────────
+    hs_rows = await db.execute(text("SELECT external_id, enabled, source_id::text FROM source_files"))
+    source_files_map: dict[str, dict] = {r[0]: {"enabled": r[1], "source_id": r[2]} for r in hs_rows}
+    source_files_enabled: dict[str, bool] = {k: v["enabled"] for k, v in source_files_map.items()}
 
     result = []
-    for entry in CATALOG:
+    for entry in entries:
         info: dict | None = None
-        if entry.doc_title_pattern:
-            info = match_doc(entry.doc_title_pattern)
-        # Use per-Part count when available, else fall back to full doc count
-        node_count = part_counts.get(entry.id, info["node_count"] if info else 0)
+        if entry["doc_title_pattern"]:
+            info = match_doc(entry["doc_title_pattern"])
+        node_count = part_counts.get(entry["id"], info["node_count"] if info else 0)
         result.append({
-            "id": entry.id,
-            "name": entry.name,
-            "short": entry.short,
-            "category": entry.category,
-            "domain": entry.domain,
-            "description": entry.description,
-            "easa_url": entry.easa_url,
-            "indexed": info is not None and info["node_count"] > 0,
-            "source_title": info["title_raw"] if info else None,
-            "source_root": info["first_root"] if info else None,
-            "version_label": info["version_label"] if info else None,
-            "pub_date": info["pub_date"] if info else None,
-            "amended_by": info["amended_by"] if info else None,
-            "node_count": node_count,
-            "harvest_key": entry.harvest_key,
+            "id":             entry["id"],
+            "name":           entry["name"],
+            "short":          entry["short"],
+            "category":       entry["category_id"],
+            "domain":         entry["domain_id"],
+            "description":    entry["description"],
+            "easa_url":       entry["easa_url"],
+            "is_active":      entry["is_active"],
+            "indexed":        info is not None and info["node_count"] > 0,
+            "source_title":   info["title_raw"] if info else None,
+            "source_root":    part_roots.get(entry["id"]) or (info["first_root"] if info else None),
+            "version_label":  info["version_label"] if info else None,
+            "pub_date":       info["pub_date"] if info else None,
+            "amended_by":     info["amended_by"] if info else None,
+            "node_count":     node_count,
+            "harvest_key":       entry["harvest_key"],
+            "harvester_enabled": source_files_enabled.get(entry["harvest_key"], False) if entry["harvest_key"] else False,
+            "harvest_source_id": source_files_map.get(entry["harvest_key"], {}).get("source_id") if entry["harvest_key"] else None,
         })
     return result
+
+
+@router.post("/catalog", status_code=201)
+async def create_catalog_entry(body: dict, db: AsyncSession = Depends(get_session)):
+    """Create a new regulations entry."""
+    required = {"id", "name", "short", "category_id", "domain_id"}
+    missing = required - body.keys()
+    if missing:
+        raise HTTPException(status_code=400, detail=f"Missing required fields: {missing}")
+    # Check uniqueness
+    exists = await db.scalar(text("SELECT 1 FROM regulations WHERE id = :id"), {"id": body["id"]})
+    if exists:
+        raise HTTPException(status_code=409, detail=f"Document '{body['id']}' already exists")
+    await db.execute(text("""
+        INSERT INTO regulations (id, name, short, category_id, domain_id, description, easa_url,
+                                 harvest_key, doc_title_pattern, is_active, sort_order)
+        VALUES (:id, :name, :short, :category_id, :domain_id, :description, :easa_url,
+                :harvest_key, :doc_title_pattern, TRUE,
+                (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM regulations))
+    """), {
+        "id":                body["id"],
+        "name":              body["name"],
+        "short":             body["short"],
+        "category_id":       body["category_id"],
+        "domain_id":         body["domain_id"],
+        "description":       body.get("description", ""),
+        "easa_url":          body.get("easa_url", ""),
+        "harvest_key":       body.get("harvest_key") or None,
+        "doc_title_pattern": body.get("doc_title_pattern") or None,
+    })
+    await db.commit()
+    return {"ok": True, "id": body["id"]}
+
+
+@router.patch("/catalog/{source_id}")
+async def patch_catalog_entry(source_id: str, body: dict, db: AsyncSession = Depends(get_session)):
+    """Update category, domain, is_active for a catalog entry."""
+    allowed = {"category_id", "domain_id", "is_active", "description", "name", "short", "easa_url", "harvest_key"}
+    updates = {k: v for k, v in body.items() if k in allowed}
+    if not updates:
+        raise HTTPException(status_code=400, detail="No valid fields to update")
+    set_clause = ", ".join(f"{k} = :{k}" for k in updates)
+    updates["source_id"] = source_id
+    updates["updated_at"] = "NOW()"
+    result = await db.execute(
+        text(f"UPDATE regulations SET {set_clause}, updated_at = NOW() WHERE id = :source_id RETURNING id"),
+        updates,
+    )
+    if not result.fetchone():
+        raise HTTPException(status_code=404, detail=f"Catalog entry '{source_id}' not found")
+    await db.commit()
+    return {"ok": True}
