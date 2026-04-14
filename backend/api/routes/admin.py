@@ -664,17 +664,21 @@ async def create_catalog_entry(body: dict, db: AsyncSession = Depends(get_sessio
     if exists:
         raise HTTPException(status_code=409, detail=f"Document '{body['id']}' already exists")
     await db.execute(text("""
-        INSERT INTO doc_sources (id, name, short, category_id, domain_id, description, easa_url, is_active, sort_order)
-        VALUES (:id, :name, :short, :category_id, :domain_id, :description, :easa_url, TRUE,
+        INSERT INTO doc_sources (id, name, short, category_id, domain_id, description, easa_url,
+                                 harvest_key, doc_title_pattern, is_active, sort_order)
+        VALUES (:id, :name, :short, :category_id, :domain_id, :description, :easa_url,
+                :harvest_key, :doc_title_pattern, TRUE,
                 (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM doc_sources))
     """), {
-        "id":          body["id"],
-        "name":        body["name"],
-        "short":       body["short"],
-        "category_id": body["category_id"],
-        "domain_id":   body["domain_id"],
-        "description": body.get("description", ""),
-        "easa_url":    body.get("easa_url", ""),
+        "id":                body["id"],
+        "name":              body["name"],
+        "short":             body["short"],
+        "category_id":       body["category_id"],
+        "domain_id":         body["domain_id"],
+        "description":       body.get("description", ""),
+        "easa_url":          body.get("easa_url", ""),
+        "harvest_key":       body.get("harvest_key") or None,
+        "doc_title_pattern": body.get("doc_title_pattern") or None,
     })
     await db.commit()
     return {"ok": True, "id": body["id"]}
