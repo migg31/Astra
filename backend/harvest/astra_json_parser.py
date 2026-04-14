@@ -22,7 +22,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from backend.harvest.models import ParsedNode, ParseResult
+from backend.harvest.models import ParsedEdge, ParsedNode, ParseResult
 
 
 def parse_astra_json(path: Path) -> ParseResult:
@@ -47,5 +47,15 @@ def parse_astra_json(path: Path) -> ParseResult:
             regulatory_source=item.get("source"),
         )
         result.nodes.append(node)
+
+    for rel in raw.get("relations", []):
+        if rel.get("from") and rel.get("to"):
+            result.edges.append(ParsedEdge(
+                source_ref=rel["from"],
+                target_ref=rel["to"],
+                relation=rel.get("label", "REFERENCES").upper().replace(" ", "_"),
+                confidence=float(rel.get("confidence", 0.8)),
+                notes="llm-extracted",
+            ))
 
     return result
