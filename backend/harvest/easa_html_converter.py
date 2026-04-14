@@ -21,6 +21,7 @@ A  = "http://schemas.openxmlformats.org/drawingml/2006/main"
 WP = "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
 PIC = "http://schemas.openxmlformats.org/drawingml/2006/picture"
 R   = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+MC  = "http://schemas.openxmlformats.org/markup-compatibility/2006"
 
 # Word paragraph style name → HTML element
 HEADING_STYLES = {
@@ -302,6 +303,13 @@ class HtmlConverter:
                 parts.append(self._hyperlink(child))
             elif t == "drawing":
                 parts.append(self._drawing(child))
+            elif t == "AlternateContent":
+                # mc:AlternateContent → prefer mc:Choice → w:drawing
+                choice = child.find(f"{{{MC}}}Choice")
+                if choice is not None:
+                    for drawing in choice.iter(f"{{{W}}}drawing"):
+                        parts.append(self._drawing(drawing))
+                        break
             elif t == "pPr":
                 pass  # already handled above
             elif t in ("bookmarkStart", "bookmarkEnd", "proofErr",
@@ -452,9 +460,16 @@ class HtmlConverter:
             elif t == "tbl":
                 content_parts.append(self._table(child))
         raw = "".join(content_parts).strip()
+        if not raw:
+            return f"<{tag}{attrs}>&nbsp;</{tag}>"
         # Unwrap a single <p>…</p> wrapping
         m = re.match(r"^<p(?:\s[^>]*)?>(.+?)</p>$", raw, re.DOTALL)
-        content = m.group(1) if m and raw.count("</p>") == 1 else raw
+        if m and raw.count("</p>") == 1:
+            content = m.group(1)
+        else:
+            # Unwrap a single orphan <li> inside a cell (no ul/ol wrapper)
+            m2 = re.match(r"^<li(?:\s[^>]*)?>(.+?)</li>$", raw, re.DOTALL)
+            content = m2.group(1) if m2 and raw.count("</li>") == 1 else raw
         return f"<{tag}{attrs}>{content}</{tag}>"
 
     def _table(self, tbl: etree._Element) -> str:

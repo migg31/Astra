@@ -308,14 +308,22 @@ def _in_scope(code: str) -> bool:
     return True
 
 
-def _hierarchy_path(code: str, stack: tuple[str, ...], doc_title: str = "") -> str:
+def _hierarchy_path(stack: tuple[str, ...], doc_title: str = "") -> str:
+    """Build hierarchy_path from structural headings only (no article code).
+    Contract: parts[0]=root, parts[1]=subpart, parts[2]=section (optional).
+    """
     parts = [seg for seg in stack if seg]
+    # Deduplicate consecutive identical segments
+    deduped: list[str] = []
+    for seg in parts:
+        if not deduped or deduped[-1] != seg:
+            deduped.append(seg)
+    parts = deduped
     # If no ANNEX-level heading anchors the root, prepend the document title
     # so all nodes from the same source share the same hierarchy root.
     # (CS-25, CS-AWO, CS-ACNS don't start with an Annex heading.)
     if doc_title and (not parts or _heading_level(parts[0]) > 1):
         parts = [doc_title] + parts
-    parts.append(code)
     return " / ".join(parts)
 
 
@@ -503,8 +511,21 @@ def parse_easa_xml(xml_path: Path) -> ParseResult:
 
     converter = HtmlConverter(image_rid_map)
 
-    # Detect if this is a CS document (CS-25, CS-ACNS, etc.) to set default node type
-    default_node_type: NodeType = "CS" if source_title and re.search(r"\bCS[- ]", source_title) else "IR"
+    # Detect default node type: prefer er:document type-of-content attribute, fallback to title heuristic
+    doc_type_of_content = ""
+    try:
+        doc_elements = toc_element.getparent()
+        if doc_elements is not None:
+            doc_type_of_content = (doc_elements.get("type-of-content") or "").upper()
+    except Exception:
+        pass
+    if doc_type_of_content in ("CS",):
+        default_node_type: NodeType = "CS"
+    elif doc_type_of_content in ("IR", "AMC", "GM"):
+        default_node_type: NodeType = "IR"
+    else:
+        # Fallback: title heuristic
+        default_node_type = "CS" if source_title and re.search(r"\bCS[- ]", source_title) else "IR"
 
     rows = _walk_toc(toc_element)
 
@@ -568,6 +589,18 @@ def parse_easa_xml(xml_path: Path) -> ParseResult:
         if node_type is None or code is None:
             continue
 
+        # Override with TypeOfContent when _classify fell back to default (ambiguous bare code)
+        if node_type == default_node_type and row.type_of_content:
+            toc_val = row.type_of_content.upper()
+            if toc_val == "AMC":
+                node_type = "AMC"
+            elif toc_val == "GM":
+                node_type = "GM"
+            elif toc_val == "IR":
+                node_type = "IR"
+            elif toc_val == "CS":
+                node_type = "CS"
+
         # Refine standalone Appendix type using TOC metadata (type_of_content / heading_stack)
         # Only override if _classify didn't already resolve to AMC/GM (i.e. it fell back to default)
         if row.title.strip().upper().startswith(("APPENDIX ", "APPENDIX\xa0")) and node_type == default_node_type:
@@ -601,7 +634,7 @@ def parse_easa_xml(xml_path: Path) -> ParseResult:
             content_text=text,
             content_html=content_html,
             content_hash=content_hash,
-            hierarchy_path=_hierarchy_path(reference_code, row.heading_stack, doc_title=source_title),
+            hierarchy_path=_hierarchy_path(row.heading_stack, doc_title=source_title),
             erules_id=row.erules_id,
             applicability_date=row.applicability_date,
             entry_into_force_date=row.entry_into_force_date,
@@ -612,18 +645,18 @@ def parse_easa_xml(xml_path: Path) -> ParseResult:
             nodes_by_ref[key] = node
             result.nodes.append(node)
 
-    # ── Second pass: attach standalone appendices to their parent AMC/CS article ──────────────
-    # A standalone appendix has reference_code like "Appendix 1 – Assessment methods" with no
-    # "to AMC/CS XXXX" clause. We find the parent by scanning backwards through the TOC rows
-    # to find the last AMC or CS article in the same heading_stack.
+    # ── Second pass: encode parent article into standalone appendix reference_code ──────────────
+    # Standalone appendices have reference_code like "Appendix 1 – title" with no "to AMC/CS".
+    # We find the nearest preceding AMC/CS article in the same heading_stack and rewrite:
+    #   "Appendix 1 – Assessment methods"  →  "Appendix 1 to AMC 25.1309 – Assessment methods"
+    # This lets tree.ts articleCode() group them under their parent article without any
+    # article codes in hierarchy_path.
     ref_to_node: dict[str, ParsedNode] = {n.reference_code: n for n in result.nodes}
     for i, row in enumerate(rows):
         if not row.title.strip().upper().startswith(("APPENDIX ", "APPENDIX\xa0")):
             continue
-        # Only standalone appendices (no "to AMC/CS" in title)
         if re.search(r"\bto\s+(?:AMC|GM|CS)\b", row.title, re.IGNORECASE):
             continue
-        # Find the node for this appendix
         node_type_app, code_app, _ = _classify(row.title, default_node_type)
         if node_type_app is None:
             continue
@@ -631,31 +664,30 @@ def parse_easa_xml(xml_path: Path) -> ParseResult:
         app_node = ref_to_node.get(ref_code_app)
         if app_node is None:
             continue
-        # Scan backwards in TOC rows to find nearest preceding AMC/CS article
-        # that shares the same heading_stack (same section context)
         parent_ref: str | None = None
         for j in range(i - 1, -1, -1):
             prev = rows[j]
             if prev.heading_stack != row.heading_stack:
                 continue
-            # Skip other standalone appendices — they are not valid parents
             if prev.title.strip().upper().startswith(("APPENDIX ", "APPENDIX\xa0")) and not re.search(r"\bto\s+(?:AMC|GM|CS)\b", prev.title, re.IGNORECASE):
                 continue
             ptype, pcode, _ = _classify(prev.title, default_node_type)
             if ptype not in ("AMC", "GM", "CS", "IR"):
                 continue
             if pcode and re.search(ARTICLE_CODE_PATTERN, pcode):
-                # Exclude CS appendix articles (25A..., 25K..., K25.x, M25.x etc.) as parents
                 if re.search(r"\b25[A-Z]\d|\b[A-Z]25\.", pcode):
                     continue
                 parent_ref = _build_reference_code(ptype, pcode, prev.title)
                 break
         if not parent_ref:
             continue
-        # Rebuild hierarchy_path: insert parent_ref before the appendix segment
-        hp_parts = app_node.hierarchy_path.rsplit(" / ", 1)
-        if len(hp_parts) == 2:
-            app_node.hierarchy_path = f"{hp_parts[0]} / {parent_ref} / {hp_parts[1]}"
+        # Rewrite reference_code to embed parent: "Appendix N – title" → "Appendix N to AMC 25.x – title"
+        old_ref = app_node.reference_code
+        m = re.match(r"^(Appendix\s+\S+)(.*)", old_ref, re.IGNORECASE)
+        if m:
+            app_node.reference_code = f"{m.group(1)} to {parent_ref}{m.group(2)}"
+            ref_to_node.pop(old_ref, None)
+            ref_to_node[app_node.reference_code] = app_node
 
     # ── Third pass: deduplicate CS appendices superseded by AMC in same batch ─────────────────
     # If an appendix node was classified as CS but an AMC exists for the same reference_code,

@@ -18,9 +18,11 @@ import psycopg2
 from psycopg2.extras import execute_values
 
 from backend.config import settings
-from backend.harvest.easa_fetcher import fetch_easa_xml, fetch_part21_xml, PART21_XML_ZIP_URL
+from backend.harvest.easa_fetcher import fetch_easa_document, fetch_part21_xml, PART21_XML_ZIP_URL
 from backend.harvest.easa_parser import parse_easa_xml
+from backend.harvest.easa_html_parser import parse_easa_html
 from backend.harvest.pdf_cs_parser import parse_cs_pdf
+from backend.harvest.pdf_smart_parser import parse_smart_pdf
 from backend.harvest.models import ParseResult
 
 
@@ -49,45 +51,157 @@ def _word_diff(old: str, new: str) -> list[dict]:
 REGULATORY_SOURCES = {
     "part21": {
         "name": "EASA Part 21",
-        "url": "https://www.easa.europa.eu/en/downloads/136660/en",
+        "urls": {
+            "xml": "https://www.easa.europa.eu/en/downloads/136660/en",
+        },
         "external_id": "easa-part21",
     },
     "part26": {
         "name": "Part 26 — Additional Airworthiness Specifications",
-        "url": "https://www.easa.europa.eu/en/downloads/136670/en",
+        "urls": {
+            "xml": "https://www.easa.europa.eu/en/downloads/136670/en",
+        },
         "external_id": "easa-part26",
     },
     "continuing-airworthiness": {
         "name": "Continuing Airworthiness (M, 145, 66, CAMO)",
-        "url": "https://www.easa.europa.eu/en/downloads/136699/en",
+        "urls": {
+            "xml": "https://www.easa.europa.eu/en/downloads/136699/en",
+        },
         "external_id": "easa-airworthiness",
     },
     "air-operations": {
         "name": "Air Operations (ORO, CAT)",
-        "url": "https://www.easa.europa.eu/en/downloads/136682/en",
+        "urls": {
+            "xml": "https://www.easa.europa.eu/en/downloads/136682/en",
+        },
         "external_id": "easa-ops",
     },
     "aircrew": {
         "name": "Aircrew (FCL, MED)",
-        "url": "https://www.easa.europa.eu/en/downloads/136654/en",
+        "urls": {
+            "xml": "https://www.easa.europa.eu/en/downloads/136679/en",
+        },
         "external_id": "easa-aircrew",
     },
     "cs-25": {
         "name": "CS-25 — Large Aeroplanes",
-        "url": "https://www.easa.europa.eu/en/downloads/136662/en",
+        "urls": {
+            "xml": "https://www.easa.europa.eu/en/downloads/136662/en",
+            "pdf": "https://www.easa.europa.eu/en/downloads/136662/en",
+        },
         "external_id": "easa-cs25",
+        "use_smart_parser": False,
     },
     "cs-acns": {
         "name": "CS-ACNS — Airborne Communications, Navigation and Surveillance",
-        "url": "https://www.easa.europa.eu/en/downloads/136674/en",
+        "urls": {
+            "xml": "https://www.easa.europa.eu/en/downloads/136674/en",
+            "pdf": "https://www.easa.europa.eu/en/downloads/136674/en",
+        },
         "external_id": "easa-csacns",
+        "use_smart_parser": False,
+    },
+    "cs-awo": {
+        "name": "CS-AWO — All Weather Operations",
+        "urls": {
+            "pdf": "https://www.easa.europa.eu/en/downloads/136530/en",
+        },
+        "external_id": "cs-awo",
+        "use_smart_parser": False,
     },
     "aerodromes": {
         "name": "Aerodromes (ADR)",
-        "url": "https://www.easa.europa.eu/en/downloads/136677/en",
+        "urls": {
+            "xml": "https://www.easa.europa.eu/en/downloads/136677/en",
+        },
         "external_id": "easa-aerodromes",
-    }
-    }
+    },
+    "cs-29": {
+        "name": "CS-29 — Large Rotorcraft",
+        "urls": {
+            "xml": "https://www.easa.europa.eu/en/downloads/143408/en",
+        },
+        "external_id": "easa-cs29",
+    },
+    "sera": {
+        "name": "SERA — Standardised European Rules of the Air",
+        "urls": {
+            "xml": "https://www.easa.europa.eu/en/downloads/136676/en",
+        },
+        "external_id": "easa-sera",
+    },
+    "info-security": {
+        "name": "Information Security (EU 2023/203 & 2022/1645)",
+        "urls": {
+            "xml": "https://www.easa.europa.eu/en/downloads/138790/en",
+        },
+        "external_id": "easa-infosec",
+    },
+    "ground-handling": {
+        "name": "Ground Handling (EU 2025/23 & 2025/20)",
+        "urls": {
+            "xml": "https://www.easa.europa.eu/en/downloads/142666/en",
+        },
+        "external_id": "easa-gh",
+    },
+    "cs-27": {
+        "name": "CS-27 — Small Rotorcraft",
+        "urls": {
+            "xml": "https://www.easa.europa.eu/en/downloads/137636/en",
+        },
+        "external_id": "easa-cs27",
+    },
+    "cs-23": {
+        "name": "CS-23 — Normal-Category Aeroplanes",
+        "urls": {
+            "xml": "https://www.easa.europa.eu/en/downloads/138962/en",
+        },
+        "external_id": "easa-cs23",
+    },
+    "cs-e": {
+        "name": "CS-E — Engines",
+        "urls": {
+            "xml": "https://www.easa.europa.eu/en/downloads/139033/en",
+        },
+        "external_id": "easa-cse",
+    },
+    "uas": {
+        "name": "UAS — Unmanned Aircraft Systems (EU 2019/947)",
+        "urls": {
+            "xml": "https://www.easa.europa.eu/en/downloads/137111/en",
+        },
+        "external_id": "easa-uas",
+    },
+    "atm-ans": {
+        "name": "ATM/ANS Equipment (EU 2023/1769 & 2023/1768)",
+        "urls": {
+            "xml": "https://www.easa.europa.eu/en/downloads/140636/en",
+        },
+        "external_id": "easa-atm-ans",
+    },
+    "amc-20": {
+        "name": "AMC-20 — Airworthiness Acceptable Means of Compliance",
+        "urls": {
+            "xml": "https://www.easa.europa.eu/en/downloads/137992/en",
+        },
+        "external_id": "easa-amc20",
+    },
+    "cs-lsa": {
+        "name": "CS-LSA — Light Sport Aeroplanes",
+        "urls": {
+            "xml": "https://www.easa.europa.eu/en/downloads/136667/en",
+        },
+        "external_id": "easa-cslsa",
+    },
+    "cs-22": {
+        "name": "CS-22 — Sailplanes and Powered Sailplanes",
+        "urls": {
+            "xml": "https://www.easa.europa.eu/en/downloads/136661/en",
+        },
+        "external_id": "easa-cs22",
+    },
+}
 
 
 SOURCE_FORMAT = "MIXED"
@@ -254,7 +368,7 @@ def upsert_nodes(
 
     # ── 4. Build version snapshots ────────────────────────────────────────
     version_rows: list[tuple] = []
-    counters = {"added": 0, "modified": 0, "unchanged": 0, "removed": nodes_removed}
+    counters = {"added": 0, "modified": 0, "unchanged": 0, "deleted": nodes_removed}
 
     for n in result.nodes:
         key = (n.node_type, n.reference_code)
@@ -341,11 +455,16 @@ def upsert_edges(cur, node_map: dict[tuple[str, str], str], result: ParseResult)
     return cur.rowcount  # actual rows inserted (excludes DO NOTHING conflicts)
 
 
-def ingest(xml_path: Path, *, source_name: str, source_url: str, external_id: str, content_hash: str, seen_keys: set[tuple[str, str]] | None = None, is_latest: bool = False) -> dict:
-    if xml_path.suffix.lower() == ".pdf":
-        result = parse_cs_pdf(xml_path, regulatory_source=source_name)
+def ingest(file_path: Path, *, source_name: str, source_url: str, external_id: str, content_hash: str, doc_format: str = "xml", use_smart_parser: bool = True, seen_keys: set[tuple[str, str]] | None = None, is_latest: bool = False, progress_callback=None) -> dict:
+    if doc_format == "pdf" and not use_smart_parser:
+        result = parse_cs_pdf(file_path, regulatory_source=source_name)
+    elif doc_format == "pdf":
+        result = parse_smart_pdf(file_path, regulatory_source=source_name, progress_callback=progress_callback)
+    elif doc_format == "html":
+        result = parse_easa_html(file_path, regulatory_source=source_name)
     else:
-        result = parse_easa_xml(xml_path)
+        # Default to XML (includes DOCX)
+        result = parse_easa_xml(file_path)
 
     title = result.source_document_title or source_name
     version_label = result.source_version or "Unknown"
@@ -360,7 +479,7 @@ def ingest(xml_path: Path, *, source_name: str, source_url: str, external_id: st
                 title=title,
                 url=source_url,
                 content_hash=content_hash,
-                raw_path=str(xml_path.resolve()),
+                raw_path=str(file_path.resolve()),
                 version_label=version_label,
                 pub_date=result.source_pub_time.date() if result.source_pub_time else None,
                 amended_by=result.source_version,
@@ -396,12 +515,42 @@ def ingest(xml_path: Path, *, source_name: str, source_url: str, external_id: st
         "nodes": len(result.nodes),
         "nodes_added": counters.get("added", 0),
         "nodes_modified": counters.get("modified", 0),
+        "nodes_deleted": counters.get("deleted", 0),
         "nodes_unchanged": counters.get("unchanged", 0),
         "edges_attempted": len(result.edges),
         "edges_inserted": edges_inserted,
         "edges_skipped": len(result.edges) - edges_inserted,
         "pub_time": result.source_pub_time,
     }
+
+
+def _seed_sources() -> int:
+    """Upsert all REGULATORY_SOURCES into harvest_sources without fetching/parsing any document."""
+    conn = psycopg2.connect(settings.database_url_sync)
+    try:
+        with conn:
+            with conn.cursor() as cur:
+                for key, cfg in REGULATORY_SOURCES.items():
+                    cur.execute(
+                        """
+                        INSERT INTO harvest_sources (external_id, name, base_url, format, frequency, last_sync_at)
+                        VALUES (%s, %s, %s, %s, %s, NULL)
+                        ON CONFLICT (external_id) DO UPDATE
+                          SET name = EXCLUDED.name,
+                              base_url = EXCLUDED.base_url
+                        """,
+                        (
+                            cfg["external_id"],
+                            cfg["name"],
+                            cfg["urls"].get("xml") or cfg["urls"].get("html") or cfg["urls"].get("pdf") or "",
+                            "MIXED",
+                            "monthly",
+                        ),
+                    )
+                    print(f"[seed] upserted: {cfg['external_id']} ({cfg['name']})")
+    finally:
+        conn.close()
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -413,9 +562,14 @@ def main(argv: list[str] | None = None) -> int:
         help="Regulatory source to ingest (default: part21)",
     )
     parser.add_argument(
+        "--seed",
+        action="store_true",
+        help="Pre-populate harvest_sources for all REGULATORY_SOURCES without fetching or parsing",
+    )
+    parser.add_argument(
         "--offline",
         type=Path,
-        help="Path to an already-downloaded pkg:package XML; skips the network fetch",
+        help="Path to an already-downloaded document (XML, DOCX, PDF, HTML); skips the network fetch",
     )
     parser.add_argument(
         "--data-dir",
@@ -425,28 +579,44 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    if args.seed:
+        return _seed_sources()
+
     source_cfg = REGULATORY_SOURCES[args.source]
 
     if args.offline:
-        xml_path = args.offline.resolve()
-        content_hash = _quick_hash(xml_path)
-        source_url = source_cfg["url"]
-        print(f"[offline] using {xml_path}")
+        file_path = args.offline.resolve()
+        content_hash = _quick_hash(file_path)
+        source_url = source_cfg["urls"].get("xml") or source_cfg["urls"].get("html") or source_cfg["urls"].get("pdf")
+        
+        # Infer format from extension
+        ext = file_path.suffix.lower()
+        if ext == ".pdf":
+            doc_format = "pdf"
+        elif ext in (".html", ".htm"):
+            doc_format = "html"
+        else:
+            doc_format = "xml"
+            
+        print(f"[offline] using {file_path} (format: {doc_format})")
     else:
         print(f"[fetch] downloading {source_cfg['name']} ...")
-        fetched = fetch_easa_xml(args.data_dir, source_cfg["url"], source_cfg["external_id"])
-        xml_path = fetched.path
+        fetched = fetch_easa_document(args.data_dir, source_cfg["urls"], source_cfg["external_id"])
+        file_path = fetched.path
         content_hash = fetched.content_hash
         source_url = fetched.url
-        print(f"[fetch] saved to {xml_path} ({content_hash[:8]})")
+        doc_format = fetched.format
+        print(f"[fetch] saved to {file_path} ({content_hash[:8]}, format: {doc_format})")
 
     print("[parse+persist] running ...")
     report = ingest(
-        xml_path,
+        file_path,
         source_name=source_cfg["name"],
         source_url=source_url,
         external_id=source_cfg["external_id"],
         content_hash=content_hash,
+        doc_format=doc_format,
+        use_smart_parser=source_cfg.get("use_smart_parser", True),
         is_latest=True,
     )
     print(f"[done] {report}")
