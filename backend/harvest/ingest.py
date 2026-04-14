@@ -307,7 +307,12 @@ def upsert_edges(cur, node_map: dict[tuple[str, str], str], result: ParseResult)
             if nid:
                 source_id = nid
                 break
-        target_id = node_map.get(("IR", edge.target_ref)) or node_map.get(("CS", edge.target_ref))
+        target_id = None
+        for candidate_type in ("IR", "AMC", "GM", "CS"):
+            nid = node_map.get((candidate_type, edge.target_ref))
+            if nid:
+                target_id = nid
+                break
         if not source_id or not target_id or source_id == target_id:
             continue
         rows.append((source_id, target_id, edge.relation, edge.confidence, edge.notes))
