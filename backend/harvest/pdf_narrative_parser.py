@@ -59,7 +59,7 @@ def _extract_lines(page: pymupdf.Page) -> list[_Line]:
                 else:
                     merged.append((txt, bold, sz))
             # Build line: majority bold, avg size
-            line_text = " ".join(t for t, _, _ in merged).strip()
+            line_text = re.sub(r" {2,}", " ", " ".join(t for t, _, _ in merged)).strip()
             line_bold = sum(1 for _, b, _ in merged if b) > len(merged) / 2
             line_size = merged[0][2] if merged else 10.0
             if line_text:
@@ -194,7 +194,13 @@ def parse_narrative_pdf(
         while len(ancestor_stack) >= depth:
             ancestor_stack.pop()
 
-        hierarchy = _hierarchy_path(annex_pfx or result.source_document_title, ancestor_stack)
+        # For depth-1 nodes include self in hierarchy so children nest under them
+        # and they appear as named subparts (not under bare root "AMC 20-26")
+        self_label = f"{code} {title}".strip() if title else code
+        if depth == 1:
+            hierarchy = _hierarchy_path(annex_pfx or result.source_document_title, [(code, title)])
+        else:
+            hierarchy = _hierarchy_path(annex_pfx or result.source_document_title, ancestor_stack)
         # Prefix with annex to guarantee uniqueness across annexes in same file
         ref_code = f"{annex_pfx} § {code}" if annex_pfx else code
         # Deduplicate: appendices may restart section numbering
