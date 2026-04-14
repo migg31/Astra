@@ -180,13 +180,39 @@ def parse_narrative_pdf(
     current_pfx: str = regulatory_source
     current_app: str = ""
 
+    pre_section_body: list[str] = []  # lines before the first heading within current appendix
+    pre_section_pfx: str = regulatory_source
+    pre_section_app: str = ""
+
+    def _flush_pre_section() -> None:
+        """If an appendix accumulated body lines before any numbered heading, emit a synthetic node."""
+        body = [l for l in pre_section_body if l]
+        if body and pre_section_app:
+            sections.append((pre_section_pfx, pre_section_app, "0", "", body))
+
     for ln, annex_pfx, app_label in all_lines:
+        # Detect appendix/annex change → flush pre-section buffer
+        if app_label != current_app or annex_pfx != current_pfx:
+            if current_code is None:
+                _flush_pre_section()
+            pre_section_body = []
+            pre_section_pfx = annex_pfx
+            pre_section_app = app_label
+            current_code = None
+            current_title = ""
+            current_body = []
+            current_pfx = annex_pfx
+            current_app = app_label
+
         m = _is_heading(ln)
         if m:
             code = m.group(1)
             heading_rest = (m.group(2) or "").strip()
             if current_code is not None:
                 sections.append((current_pfx, current_app, current_code, current_title, current_body))
+            else:
+                # First heading found — discard pre-section buffer (will be body of section 1)
+                pre_section_body = []
             current_code = code
             current_title = heading_rest
             current_body = []
@@ -194,14 +220,17 @@ def parse_narrative_pdf(
             current_app = app_label
         else:
             if current_code is None:
-                continue  # preamble before first section
-            if not current_title and ln.bold:
+                # Accumulate pre-section content for this appendix
+                pre_section_body.append(ln.text.strip())
+            elif not current_title and ln.bold:
                 current_title = ln.text.strip()
             else:
                 current_body.append(ln.text.strip())
 
     if current_code is not None:
         sections.append((current_pfx, current_app, current_code, current_title, current_body))
+    else:
+        _flush_pre_section()
 
     if not sections:
         return result
@@ -249,23 +278,31 @@ def parse_narrative_pdf(
             hier_root = f"{doc_root} / {app_label}"
         else:
             hier_root = doc_root
-        if depth == 1:
+        # code "0" = synthetic node for appendix with no numbered sections
+        if code == "0":
+            hierarchy = hier_root
+            ref_code = f"{annex_pfx} {app_label}" if annex_pfx else app_label
+        elif depth == 1:
             hierarchy = f"{hier_root} / {code} {title}".strip().rstrip("/").strip()
         else:
             parts_hier = [hier_root] + [f"{c} {t}".strip() for c, t in ancestor_stack]
             hierarchy = " / ".join(p for p in parts_hier if p)
-        # Build unique ref_code: include appendix label to avoid collisions
-        if app_label:
-            ref_code = f"{annex_pfx} {app_label} § {code}" if annex_pfx else f"{app_label} § {code}"
-        else:
-            ref_code = f"{annex_pfx} § {code}" if annex_pfx else code
+        # Build unique ref_code: include appendix label to avoid collisions (skip for code "0")
+        if code != "0":
+            if app_label:
+                ref_code = f"{annex_pfx} {app_label} § {code}" if annex_pfx else f"{app_label} § {code}"
+            else:
+                ref_code = f"{annex_pfx} § {code}" if annex_pfx else code
         # Deduplicate as last resort (shouldn't be needed with appendix key)
         if ref_code in seen_refs:
             seen_refs[ref_code] += 1
             ref_code = f"{ref_code} ({seen_refs[ref_code]})"
         else:
             seen_refs[ref_code] = 1
-        full_title = f"{code} {title}".strip() if title else code
+        if code == "0":
+            full_title = app_label or title or ""
+        else:
+            full_title = f"{code} {title}".strip() if title else code
 
         h = hashlib.sha256(content.encode()).hexdigest()[:16]
 
