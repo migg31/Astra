@@ -24,6 +24,7 @@ from backend.harvest.easa_html_parser import parse_easa_html
 from backend.harvest.pdf_cs_parser import parse_cs_pdf
 from backend.harvest.pdf_smart_parser import parse_smart_pdf
 from backend.harvest.pdf_narrative_parser import parse_narrative_pdf
+from backend.harvest.astra_json_parser import parse_astra_json
 from backend.harvest.models import ParseResult
 
 
@@ -329,7 +330,9 @@ def upsert_edges(cur, node_map: dict[tuple[str, str], str], result: ParseResult)
 
 
 def ingest(file_path: Path, *, source_name: str, source_url: str, external_id: str, content_hash: str, doc_format: str = "xml", use_smart_parser: bool = True, use_narrative_parser: bool = False, seen_keys: set[tuple[str, str]] | None = None, is_latest: bool = False, progress_callback=None) -> dict:
-    if doc_format == "pdf" and use_narrative_parser:
+    if doc_format == "astra_json" or file_path.suffix.lower() == ".json":
+        result = parse_astra_json(file_path)
+    elif doc_format == "pdf" and use_narrative_parser:
         result = parse_narrative_pdf(file_path, regulatory_source=source_name)
     elif doc_format == "pdf" and not use_smart_parser:
         result = parse_cs_pdf(file_path, regulatory_source=source_name)
