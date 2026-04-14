@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-04-14
+
+### Added
+- **LLM enrichment pipeline** (`llm_enrich.py`): batch-processes Astra JSON nodes via Groq (llama-3.3-70b-versatile) to assign semantic types (`requirement`, `guidance`, `definition`, `procedure`) and extract cross-reference relations between sections.
+- **PDF → JSON pipeline** (`pdf_to_json.py`): standalone CLI to convert a narrative PDF into a raw Astra JSON intermediate format, cached alongside the PDF for re-use.
+- **`json` harvest format**: `easa_fetcher` now supports a local JSON path as source (`urls: {"json": "raw/.../enriched.json"}`). No download — file is hash-tracked for change detection. Priority: `json > xml > html > pdf`.
+- **`astra_json_parser.py`**: parses Astra JSON (raw or LLM-enriched) into `ParseResult` including `ParsedEdge` for LLM-extracted relations.
+- **Admin UI — JSON local field**: source edit form now includes a "JSON local" path field alongside XML/PDF URLs. Badge `JSON` displayed in the source column when configured.
+- **21 LLM-extracted cross-reference edges** for AMC 20-26/27, including inter-document links (e.g. `AMC 20-26 § 6.1.3 → AMC 20-27 § 6.1`).
+
+### Fixed
+- **Edge target resolution**: `upsert_edges` was only looking up target nodes as `IR` or `CS` type, causing all LLM-extracted `AMC`/`GM` targets to be silently dropped. Now iterates all four types.
+- **Harvest format display**: sources configured with a local JSON path now correctly report `format: json` in harvest logs instead of `pdf`.
+
+### Changed
+- **`ingest()` dispatcher simplified**: removed `use_narrative_parser` / enriched.json lookup complexity. Format routing is now: `json` → `parse_astra_json`, `pdf` → smart/cs parser, `xml` → EASA XML parser.
+- **LLM provider**: switched default enrichment from Ollama/mistral (unusably slow) to Groq/llama-3.3-70b-versatile (~45s for 160 nodes). `--provider groq|ollama` CLI flag added.
+- **Batch size**: reduced from 12 to 8 nodes per LLM call for better reliability.
+
 ## [0.6.0] - 2026-04-13
 
 ### Added
