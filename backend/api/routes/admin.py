@@ -617,30 +617,37 @@ async def get_catalog(db: AsyncSession = Depends(get_session)):
         ids        = [e["id"] for e in patterned]
         title_pats = [e["doc_title_pattern"] for e in patterned]
         ref_pats   = [e["ref_code_pattern"] for e in patterned]
-        batch_rows = await db.execute(text("""
-            SELECT
-                p.entry_id,
-                COUNT(rn.node_id) AS node_count,
-                (
-                    SELECT SPLIT_PART(rn2.hierarchy_path, ' / ', 1)
-                    FROM regulatory_nodes rn2
-                    JOIN harvest_documents hd2 ON hd2.doc_id = rn2.source_doc_id
-                    WHERE hd2.title ILIKE p.title_pat
-                      AND rn2.reference_code ~ p.ref_pat
-                      AND rn2.hierarchy_path IS NOT NULL AND rn2.hierarchy_path != ''
-                    GROUP BY SPLIT_PART(rn2.hierarchy_path, ' / ', 1)
-                    ORDER BY COUNT(*) DESC LIMIT 1
-                ) AS part_root
-            FROM UNNEST(
-                :ids::text[], :title_pats::text[], :ref_pats::text[]
-            ) AS p(entry_id, title_pat, ref_pat)
-            LEFT JOIN harvest_documents hd ON hd.title ILIKE p.title_pat
-            LEFT JOIN regulatory_nodes rn
-                ON rn.source_doc_id = hd.doc_id
-               AND rn.node_type != 'GROUP'
-               AND rn.reference_code ~ p.ref_pat
-            GROUP BY p.entry_id, p.title_pat, p.ref_pat
-        """), {"ids": ids, "title_pats": title_pats, "ref_pats": ref_pats})
+        from sqlalchemy import bindparam, ARRAY, String
+        batch_rows = await db.execute(
+            text("""
+                SELECT
+                    p.entry_id,
+                    COUNT(rn.node_id) AS node_count,
+                    (
+                        SELECT SPLIT_PART(rn2.hierarchy_path, ' / ', 1)
+                        FROM regulatory_nodes rn2
+                        JOIN harvest_documents hd2 ON hd2.doc_id = rn2.source_doc_id
+                        WHERE hd2.title ILIKE p.title_pat
+                          AND rn2.reference_code ~ p.ref_pat
+                          AND rn2.hierarchy_path IS NOT NULL AND rn2.hierarchy_path != ''
+                        GROUP BY SPLIT_PART(rn2.hierarchy_path, ' / ', 1)
+                        ORDER BY COUNT(*) DESC LIMIT 1
+                    ) AS part_root
+                FROM UNNEST(
+                    CAST(:ids AS text[]), CAST(:title_pats AS text[]), CAST(:ref_pats AS text[])
+                ) AS p(entry_id, title_pat, ref_pat)
+                LEFT JOIN harvest_documents hd ON hd.title ILIKE p.title_pat
+                LEFT JOIN regulatory_nodes rn
+                    ON rn.source_doc_id = hd.doc_id
+                   AND rn.node_type != 'GROUP'
+                   AND rn.reference_code ~ p.ref_pat
+                GROUP BY p.entry_id, p.title_pat, p.ref_pat
+            """).bindparams(
+                bindparam("ids",        value=ids,        type_=ARRAY(String)),
+                bindparam("title_pats", value=title_pats, type_=ARRAY(String)),
+                bindparam("ref_pats",   value=ref_pats,   type_=ARRAY(String)),
+            )
+        )
         for r in batch_rows.mappings():
             part_counts[r["entry_id"]] = int(r["node_count"] or 0)
             part_roots[r["entry_id"]] = r["part_root"] or ""
