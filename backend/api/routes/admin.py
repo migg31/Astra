@@ -606,19 +606,30 @@ async def get_catalog(db: AsyncSession = Depends(get_session)):
     """))
     entries = list(src_rows.mappings())
 
-    # ── Per-Part node counts for entries with ref_code_pattern ───────────────
+    # ── Per-Part node counts + source_root for entries with ref_code_pattern ───
     part_counts: dict[str, int] = {}
+    part_roots: dict[str, str] = {}
     for entry in entries:
         if entry["doc_title_pattern"] and entry["ref_code_pattern"]:
             row = await db.execute(text("""
-                SELECT COUNT(rn.node_id)
+                SELECT COUNT(rn.node_id),
+                       (SELECT SPLIT_PART(rn2.hierarchy_path, ' / ', 1)
+                        FROM regulatory_nodes rn2
+                        JOIN harvest_documents hd2 ON hd2.doc_id = rn2.source_doc_id
+                        WHERE hd2.title ILIKE :title_pat
+                          AND rn2.reference_code ~ :ref_pat
+                          AND rn2.hierarchy_path IS NOT NULL AND rn2.hierarchy_path != ''
+                        GROUP BY SPLIT_PART(rn2.hierarchy_path, ' / ', 1)
+                        ORDER BY COUNT(*) DESC LIMIT 1) AS part_root
                 FROM regulatory_nodes rn
                 JOIN harvest_documents hd ON hd.doc_id = rn.source_doc_id
                 WHERE hd.title ILIKE :title_pat
                   AND rn.node_type != 'GROUP'
                   AND rn.reference_code ~ :ref_pat
             """), {"title_pat": entry["doc_title_pattern"], "ref_pat": entry["ref_code_pattern"]})
-            part_counts[entry["id"]] = int(row.scalar() or 0)
+            r = row.mappings().first()
+            part_counts[entry["id"]] = int(r["count"] or 0) if r else 0
+            part_roots[entry["id"]] = r["part_root"] or "" if r else ""
 
     # ── Fetch harvest_sources enabled status + source_id ─────────────────────
     hs_rows = await db.execute(text("SELECT external_id, enabled, source_id::text FROM harvest_sources"))
@@ -642,7 +653,7 @@ async def get_catalog(db: AsyncSession = Depends(get_session)):
             "is_active":      entry["is_active"],
             "indexed":        info is not None and info["node_count"] > 0,
             "source_title":   info["title_raw"] if info else None,
-            "source_root":    info["first_root"] if info else None,
+            "source_root":    part_roots.get(entry["id"]) or (info["first_root"] if info else None),
             "version_label":  info["version_label"] if info else None,
             "pub_date":       info["pub_date"] if info else None,
             "amended_by":     info["amended_by"] if info else None,
