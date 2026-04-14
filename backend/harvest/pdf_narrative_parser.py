@@ -23,6 +23,7 @@ _PAGE_FOOTER_RE = re.compile(
 )
 _ANNEX_HEADER_RE = re.compile(r"^(AMC|GM)\s+([\d]+(?:[\s\-\.]+\d+)*)\s*$")  # e.g. "AMC 2026", "AMC 20-26"
 _APPENDIX_RE = re.compile(r"^(Appendix\s+\d+)\s*$", re.IGNORECASE)  # e.g. "Appendix 2"
+_FOOTNOTE_RE = re.compile(r"^\d+\s+[A-Z]")  # footnote lines: "1 Regulation...", "2 Commission..."
 _TOC_DOT_RE = re.compile(r"\.{4,}")  # lines of dots = TOC
 _SMALL_CAP_SIZE = 8.5  # spans below this are "small caps" artifacts — skip
 
@@ -135,7 +136,7 @@ def parse_narrative_pdf(
                 continue
             m_app = _APPENDIX_RE.match(htxt)
             if m_app:
-                new_app = m_app.group(1).strip()
+                new_app = m_app.group(1).strip().title()  # normalise to "Appendix 2"
                 if new_app != current_appendix:
                     current_appendix = new_app
                 header_consumed = hi + 1
@@ -211,6 +212,9 @@ def parse_narrative_pdf(
         # Skip TOC ghost entries (no title and no body)
         content = "\n".join(body_lines).strip()
         if not title and not content:
+            continue
+        # Skip titleless sections whose body looks like footnotes ("1 Regulation...", "2 Commission...")
+        if not title and content and _FOOTNOTE_RE.match(content.split("\n")[0].strip()):
             continue
 
         # Trim ancestor stack to current depth
