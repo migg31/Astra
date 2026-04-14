@@ -112,20 +112,21 @@ def parse_narrative_pdf(
     result = ParseResult()
     result.source_document_title = regulatory_source or path.stem
 
-    # Detect document title from page 1 bold spans before first section
-    title_parts: list[str] = []
-    seen_title: set[str] = set()
-    first_page_lines = _extract_lines(doc[0])
-    for ln in first_page_lines:
-        m = _is_heading(ln)
-        if m:
-            break
-        txt = ln.text.strip()
-        if ln.bold and not _PAGE_FOOTER_RE.match(txt) and txt not in seen_title:
-            title_parts.append(txt)
-            seen_title.add(txt)
-    if title_parts:
-        result.source_document_title = " ".join(title_parts[:3])  # first 3 unique bold lines
+    # Use provided regulatory_source as title, or detect from page 1 bold lines
+    if not regulatory_source:
+        title_parts: list[str] = []
+        seen_title: set[str] = set()
+        first_page_lines = _extract_lines(doc[0])
+        for ln in first_page_lines:
+            m = _is_heading(ln)
+            if m:
+                break
+            txt = ln.text.strip()
+            if ln.bold and not _PAGE_FOOTER_RE.match(txt) and txt not in seen_title:
+                title_parts.append(txt)
+                seen_title.add(txt)
+        if title_parts:
+            result.source_document_title = " ".join(title_parts[:3])  # first 3 unique bold lines
 
     # ── Pass 1: collect all lines across pages ────────────────────────────
     # Lines tagged with optional annex_prefix (e.g. "AMC 2026", "AMC 2027")
@@ -285,7 +286,16 @@ def parse_narrative_pdf(
         elif depth == 1:
             hierarchy = f"{hier_root} / {code} {title}".strip().rstrip("/").strip()
         else:
-            parts_hier = [hier_root] + [f"{c} {t}".strip() for c, t in ancestor_stack]
+            # Build path from ancestor_stack, skipping synthetic (titleless) entries
+            # but keeping enough context: use only the direct named parent chain
+            ancestor_parts = []
+            for c, t in ancestor_stack:
+                if t:
+                    ancestor_parts.append(f"{c} {t}".strip())
+                else:
+                    # Synthetic parent (no title): include code only for grouping
+                    ancestor_parts.append(c)
+            parts_hier = [hier_root] + ancestor_parts
             hierarchy = " / ".join(p for p in parts_hier if p)
         # Build unique ref_code: include appendix label to avoid collisions (skip for code "0")
         if code != "0":
