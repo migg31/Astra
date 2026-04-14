@@ -93,30 +93,33 @@ class SystemConfig(BaseModel):
 
 @router.get("/stats", response_model=SystemStats)
 async def get_stats(db: AsyncSession = Depends(get_session)):
-    """Fetch global statistics from PostgreSQL and ChromaDB."""
-    # Postgres stats
-    nodes = await db.scalar(text("SELECT COUNT(*) FROM regulatory_nodes"))
-    edges = await db.scalar(text("SELECT COUNT(*) FROM regulatory_edges"))
-    docs = await db.scalar(text("SELECT COUNT(*) FROM harvest_documents"))
-    
-    # DB Size (approximate)
-    db_size = await db.scalar(text("SELECT pg_database_size(current_database()) / 1024.0 / 1024.0"))
-    
-    # pgvector stats
+    """Fetch global statistics from PostgreSQL — single batched query."""
+    row = (await db.execute(text("""
+        SELECT
+            (SELECT COUNT(*) FROM regulatory_nodes)             AS nodes,
+            (SELECT COUNT(*) FROM regulatory_edges)             AS edges,
+            (SELECT COUNT(*) FROM harvest_documents)            AS docs,
+            (SELECT COUNT(*) FROM regulatory_node_versions)     AS snapshots,
+            (SELECT COUNT(*) FROM document_harvest_runs)        AS runs,
+            (SELECT MAX(fetched_at) FROM document_harvest_runs) AS last_harvest,
+            pg_database_size(current_database()) / 1024.0 / 1024.0 AS db_size_mb,
+            pg_total_relation_size('node_embeddings') / 1024.0 / 1024.0 AS vector_size_mb
+    """))).mappings().first()
+
     embeds = 0
-    vector_size_mb = 0.0
     try:
         embeds = count_embeddings()
-        vector_size_mb = float(await db.scalar(text(
-            "SELECT pg_total_relation_size('node_embeddings') / 1024.0 / 1024.0"
-        )) or 0)
     except Exception:
         pass
-        
-    # Versioning stats
-    snapshots = await db.scalar(text("SELECT COUNT(*) FROM regulatory_node_versions"))
-    runs = await db.scalar(text("SELECT COUNT(*) FROM document_harvest_runs"))
-    last_harvest = await db.scalar(text("SELECT MAX(fetched_at) FROM document_harvest_runs"))
+
+    nodes       = row["nodes"]
+    edges       = row["edges"]
+    docs        = row["docs"]
+    snapshots   = row["snapshots"]
+    runs        = row["runs"]
+    last_harvest = row["last_harvest"]
+    db_size      = row["db_size_mb"]
+    vector_size_mb = float(row["vector_size_mb"] or 0)
 
     return SystemStats(
         nodes_count=nodes or 0,
@@ -606,30 +609,41 @@ async def get_catalog(db: AsyncSession = Depends(get_session)):
     """))
     entries = list(src_rows.mappings())
 
-    # ── Per-Part node counts + source_root for entries with ref_code_pattern ───
+    # ── Per-Part node counts + source_root — single batched query ───────────────
     part_counts: dict[str, int] = {}
     part_roots: dict[str, str] = {}
-    for entry in entries:
-        if entry["doc_title_pattern"] and entry["ref_code_pattern"]:
-            row = await db.execute(text("""
-                SELECT COUNT(rn.node_id),
-                       (SELECT SPLIT_PART(rn2.hierarchy_path, ' / ', 1)
-                        FROM regulatory_nodes rn2
-                        JOIN harvest_documents hd2 ON hd2.doc_id = rn2.source_doc_id
-                        WHERE hd2.title ILIKE :title_pat
-                          AND rn2.reference_code ~ :ref_pat
-                          AND rn2.hierarchy_path IS NOT NULL AND rn2.hierarchy_path != ''
-                        GROUP BY SPLIT_PART(rn2.hierarchy_path, ' / ', 1)
-                        ORDER BY COUNT(*) DESC LIMIT 1) AS part_root
-                FROM regulatory_nodes rn
-                JOIN harvest_documents hd ON hd.doc_id = rn.source_doc_id
-                WHERE hd.title ILIKE :title_pat
-                  AND rn.node_type != 'GROUP'
-                  AND rn.reference_code ~ :ref_pat
-            """), {"title_pat": entry["doc_title_pattern"], "ref_pat": entry["ref_code_pattern"]})
-            r = row.mappings().first()
-            part_counts[entry["id"]] = int(r["count"] or 0) if r else 0
-            part_roots[entry["id"]] = r["part_root"] or "" if r else ""
+    patterned = [e for e in entries if e["doc_title_pattern"] and e["ref_code_pattern"]]
+    if patterned:
+        ids        = [e["id"] for e in patterned]
+        title_pats = [e["doc_title_pattern"] for e in patterned]
+        ref_pats   = [e["ref_code_pattern"] for e in patterned]
+        batch_rows = await db.execute(text("""
+            SELECT
+                p.entry_id,
+                COUNT(rn.node_id) AS node_count,
+                (
+                    SELECT SPLIT_PART(rn2.hierarchy_path, ' / ', 1)
+                    FROM regulatory_nodes rn2
+                    JOIN harvest_documents hd2 ON hd2.doc_id = rn2.source_doc_id
+                    WHERE hd2.title ILIKE p.title_pat
+                      AND rn2.reference_code ~ p.ref_pat
+                      AND rn2.hierarchy_path IS NOT NULL AND rn2.hierarchy_path != ''
+                    GROUP BY SPLIT_PART(rn2.hierarchy_path, ' / ', 1)
+                    ORDER BY COUNT(*) DESC LIMIT 1
+                ) AS part_root
+            FROM UNNEST(
+                :ids::text[], :title_pats::text[], :ref_pats::text[]
+            ) AS p(entry_id, title_pat, ref_pat)
+            LEFT JOIN harvest_documents hd ON hd.title ILIKE p.title_pat
+            LEFT JOIN regulatory_nodes rn
+                ON rn.source_doc_id = hd.doc_id
+               AND rn.node_type != 'GROUP'
+               AND rn.reference_code ~ p.ref_pat
+            GROUP BY p.entry_id, p.title_pat, p.ref_pat
+        """), {"ids": ids, "title_pats": title_pats, "ref_pats": ref_pats})
+        for r in batch_rows.mappings():
+            part_counts[r["entry_id"]] = int(r["node_count"] or 0)
+            part_roots[r["entry_id"]] = r["part_root"] or ""
 
     # ── Fetch source_files enabled status + source_id ──────────────────────────
     hs_rows = await db.execute(text("SELECT external_id, enabled, source_id::text FROM source_files"))
