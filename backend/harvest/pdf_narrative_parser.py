@@ -22,6 +22,7 @@ _PAGE_FOOTER_RE = re.compile(
     r"^(Page\s+\d+\s+of\s+\d+|Powered by EASA|©\s*\d{4}|Annex\s+(I|II|III|IV|V|VI|VII)\s+to\b)", re.IGNORECASE
 )
 _ANNEX_HEADER_RE = re.compile(r"^(AMC|GM)\s+([\d]+(?:[\s\-\.]+\d+)*)\s*$")  # e.g. "AMC 2026", "AMC 20-26"
+_APPENDIX_RE = re.compile(r"^(Appendix\s+\d+)\s*$", re.IGNORECASE)  # e.g. "Appendix 2"
 _TOC_DOT_RE = re.compile(r"\.{4,}")  # lines of dots = TOC
 _SMALL_CAP_SIZE = 8.5  # spans below this are "small caps" artifacts — skip
 
@@ -114,19 +115,37 @@ def parse_narrative_pdf(
 
     # ── Pass 1: collect all lines across pages ────────────────────────────
     # Lines tagged with optional annex_prefix (e.g. "AMC 2026", "AMC 2027")
-    all_lines: list[tuple[_Line, str]] = []  # (line, annex_prefix)
+    all_lines: list[tuple[_Line, str, str]] = []  # (line, annex_prefix, appendix_label)
     current_annex = regulatory_source  # default = source name
+    current_appendix: str = ""  # e.g. "Appendix 2"
     for page in doc:
         page_lines = _extract_lines(page)
-        # Detect annex/document from the FIRST non-empty line of the page only (page header)
-        if page_lines:
-            first_txt = page_lines[0].text.strip()
-            m_hdr = _ANNEX_HEADER_RE.match(first_txt)
+        # Detect annex/appendix from the first few lines of the page (page header area)
+        # Headers look like: "AMC 2026" / "Appendix 2" / "Page X of Y"
+        header_consumed = 0
+        for hi, hl in enumerate(page_lines[:4]):
+            htxt = hl.text.strip()
+            m_hdr = _ANNEX_HEADER_RE.match(htxt)
             if m_hdr:
                 new_annex = f"{m_hdr.group(1)} {m_hdr.group(2)}".strip()
                 if new_annex != current_annex:
                     current_annex = new_annex
-                page_lines = page_lines[1:]  # skip the header line from content
+                    current_appendix = ""  # reset appendix on doc change
+                header_consumed = hi + 1
+                continue
+            m_app = _APPENDIX_RE.match(htxt)
+            if m_app:
+                new_app = m_app.group(1).strip()
+                if new_app != current_appendix:
+                    current_appendix = new_app
+                header_consumed = hi + 1
+                continue
+            # Page N of M → skip
+            if re.match(r'^Page\s+\d+\s+of\s+\d+', htxt, re.IGNORECASE):
+                header_consumed = hi + 1
+                continue
+            break  # first non-header line — stop scanning
+        page_lines = page_lines[header_consumed:]
 
         for ln in page_lines:
             txt = ln.text.strip()
@@ -136,27 +155,29 @@ def parse_narrative_pdf(
                 continue
             if _TOC_DOT_RE.search(txt):
                 continue
-            all_lines.append((ln, current_annex))
+            all_lines.append((ln, current_annex, current_appendix))
 
     # ── Pass 2: segment into sections ────────────────────────────────────
     # Each section: (annex_prefix, code, title, body_lines)
-    sections: list[tuple[str, str, str, list[str]]] = []
+    sections: list[tuple[str, str, str, str, list[str]]] = []  # (annex, appendix, code, title, body)
     current_code: str | None = None
     current_title: str = ""
     current_body: list[str] = []
     current_pfx: str = regulatory_source
+    current_app: str = ""
 
-    for ln, annex_pfx in all_lines:
+    for ln, annex_pfx, app_label in all_lines:
         m = _is_heading(ln)
         if m:
             code = m.group(1)
             heading_rest = (m.group(2) or "").strip()
             if current_code is not None:
-                sections.append((current_pfx, current_code, current_title, current_body))
+                sections.append((current_pfx, current_app, current_code, current_title, current_body))
             current_code = code
             current_title = heading_rest
             current_body = []
             current_pfx = annex_pfx
+            current_app = app_label
         else:
             if current_code is None:
                 continue  # preamble before first section
@@ -166,7 +187,7 @@ def parse_narrative_pdf(
                 current_body.append(ln.text.strip())
 
     if current_code is not None:
-        sections.append((current_pfx, current_code, current_title, current_body))
+        sections.append((current_pfx, current_app, current_code, current_title, current_body))
 
     if not sections:
         return result
@@ -175,15 +196,17 @@ def parse_narrative_pdf(
     # Stack keyed by (annex_prefix, code) to reset hierarchy on annex change
     ancestor_stack: list[tuple[str, str]] = []
     last_annex: str = ""
+    last_appendix: str = ""
     seen_refs: dict[str, int] = {}  # ref_code -> count for dedup
 
-    for annex_pfx, code, title, body_lines in sections:
+    for annex_pfx, app_label, code, title, body_lines in sections:
         depth = _section_depth(code)
 
-        # Reset hierarchy when annex changes
-        if annex_pfx != last_annex:
+        # Reset hierarchy when annex or appendix changes
+        if annex_pfx != last_annex or app_label != last_appendix:
             ancestor_stack = []
             last_annex = annex_pfx
+            last_appendix = app_label
 
         # Skip TOC ghost entries (no title and no body)
         content = "\n".join(body_lines).strip()
@@ -194,16 +217,24 @@ def parse_narrative_pdf(
         while len(ancestor_stack) >= depth:
             ancestor_stack.pop()
 
-        # For depth-1 nodes include self in hierarchy so children nest under them
-        # and they appear as named subparts (not under bare root "AMC 20-26")
-        self_label = f"{code} {title}".strip() if title else code
-        if depth == 1:
-            hierarchy = _hierarchy_path(annex_pfx or result.source_document_title, [(code, title)])
+        # Build hierarchy root: doc_title / appendix (if any) / sections...
+        doc_root = annex_pfx or result.source_document_title
+        # Insert appendix as intermediate level in hierarchy
+        if app_label:
+            hier_root = f"{doc_root} / {app_label}"
         else:
-            hierarchy = _hierarchy_path(annex_pfx or result.source_document_title, ancestor_stack)
-        # Prefix with annex to guarantee uniqueness across annexes in same file
-        ref_code = f"{annex_pfx} § {code}" if annex_pfx else code
-        # Deduplicate: appendices may restart section numbering
+            hier_root = doc_root
+        if depth == 1:
+            hierarchy = f"{hier_root} / {code} {title}".strip().rstrip("/").strip()
+        else:
+            parts_hier = [hier_root] + [f"{c} {t}".strip() for c, t in ancestor_stack]
+            hierarchy = " / ".join(p for p in parts_hier if p)
+        # Build unique ref_code: include appendix label to avoid collisions
+        if app_label:
+            ref_code = f"{annex_pfx} {app_label} § {code}" if annex_pfx else f"{app_label} § {code}"
+        else:
+            ref_code = f"{annex_pfx} § {code}" if annex_pfx else code
+        # Deduplicate as last resort (shouldn't be needed with appendix key)
         if ref_code in seen_refs:
             seen_refs[ref_code] += 1
             ref_code = f"{ref_code} ({seen_refs[ref_code]})"
