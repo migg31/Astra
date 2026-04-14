@@ -176,9 +176,9 @@ export function AdminConsole({ onClose }: AdminConsoleProps) {
   };
 
   const TABS: { id: AdminTab; label: string; icon: React.ReactNode; badge?: number }[] = [
-    { id: "overview",  label: "Overview",  icon: <LayoutDashboard size={14} strokeWidth={1.8} /> },
-    { id: "documents", label: "Documents", icon: <FileText size={14} strokeWidth={1.8} />, badge: catalogEntries.length || undefined },
-    { id: "harvest",   label: "Harvest",   icon: <Cpu size={14} strokeWidth={1.8} />, badge: sources.filter(s => s.enabled).length || undefined },
+    { id: "overview",  label: "Overview",     icon: <LayoutDashboard size={14} strokeWidth={1.8} /> },
+    { id: "documents", label: "Regulations",  icon: <FileText size={14} strokeWidth={1.8} />, badge: catalogEntries.length || undefined },
+    { id: "harvest",   label: "Source Files", icon: <Cpu size={14} strokeWidth={1.8} />, badge: sources.filter(s => s.enabled).length || undefined },
     { id: "versions",  label: "Versions",  icon: <GitBranch size={14} strokeWidth={1.8} /> },
   ];
 
@@ -301,7 +301,7 @@ export function AdminConsole({ onClose }: AdminConsoleProps) {
 
         {activeTab === "harvest" && (
           <div className="admin-content">
-            <h1 className="admin-page-title">Knowledge Harvester</h1>
+            <h1 className="admin-page-title">Source Files</h1>
             <p className="admin-page-desc">
               Select one or more sources, then run ingestion. Each source is processed sequentially.
               Version snapshots are recorded automatically for every changed node.

@@ -49,14 +49,14 @@ def _word_diff(old: str, new: str) -> list[dict]:
     return ops[:500]
 
 def _load_sources_from_db() -> dict[str, dict]:
-    """Load all enabled harvest_sources from DB as {external_id: cfg_dict}.
+    """Load all enabled source_files from DB as {external_id: cfg_dict}.
     cfg_dict keys: name, external_id, urls (dict), use_smart_parser (bool).
     """
     conn = psycopg2.connect(settings.database_url_sync)
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT external_id, name, urls FROM harvest_sources WHERE enabled = TRUE ORDER BY name"
+                "SELECT external_id, name, urls FROM source_files WHERE enabled = TRUE ORDER BY name"
             )
             rows = cur.fetchall()
     finally:
@@ -86,7 +86,7 @@ def upsert_source(cur, name: str, url: str, external_id: str | None = None) -> s
         # Prefer upsert by external_id to avoid duplicates on rename
         cur.execute(
             """
-            INSERT INTO harvest_sources (external_id, name, base_url, format, frequency, last_sync_at)
+            INSERT INTO source_files (external_id, name, base_url, format, frequency, last_sync_at)
             VALUES (%s, %s, %s, %s, %s, NOW())
             ON CONFLICT (external_id) DO UPDATE
                 SET name         = EXCLUDED.name,
@@ -101,7 +101,7 @@ def upsert_source(cur, name: str, url: str, external_id: str | None = None) -> s
     else:
         cur.execute(
             """
-            INSERT INTO harvest_sources (name, base_url, format, frequency, last_sync_at)
+            INSERT INTO source_files (name, base_url, format, frequency, last_sync_at)
             VALUES (%s, %s, %s, %s, NOW())
             ON CONFLICT (name) DO UPDATE
                 SET base_url     = EXCLUDED.base_url,
@@ -390,7 +390,7 @@ def ingest(file_path: Path, *, source_name: str, source_url: str, external_id: s
                 with conn2.cursor() as cur2:
                     cur2.execute(
                         """
-                        UPDATE doc_sources
+                        UPDATE regulations
                         SET doc_title_pattern = %s
                         WHERE harvest_key = %s
                           AND doc_title_pattern IS NULL
@@ -419,7 +419,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Ingest EASA Rules into Postgres")
     parser.add_argument(
         "--source",
-        help="external_id of the source to ingest (as stored in harvest_sources)",
+        help="external_id of the source to ingest (as stored in source_files)",
         default="easa-part21",
     )
     parser.add_argument(

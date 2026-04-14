@@ -367,7 +367,7 @@ async def _run_embeddings_task():
 @router.post("/purge", status_code=200)
 async def purge_database():
     """Truncate all indexed data (nodes, documents, snapshots, embeddings).
-    Preserves doc_sources, doc_categories, doc_domains, harvest_sources."""
+    Preserves regulations, doc_categories, doc_domains, source_files."""
     if _status.is_running:
         raise HTTPException(status_code=409, detail="A harvest/embed task is running. Wait for it to finish before purging.")
     deleted = purge_store()
@@ -397,7 +397,7 @@ async def list_sources(db: AsyncSession = Depends(get_session)):
     rows = await db.execute(
         text("""
             SELECT source_id, name, base_url, urls, external_id, format, frequency, enabled, last_sync_at
-            FROM harvest_sources
+            FROM source_files
             ORDER BY name
         """)
     )
@@ -415,7 +415,7 @@ async def create_source(body: RegulatorySourceCreate, db: AsyncSession = Depends
 
     row = await db.execute(
         text("""
-            INSERT INTO harvest_sources (name, base_url, urls, external_id, format, frequency, enabled)
+            INSERT INTO source_files (name, base_url, urls, external_id, format, frequency, enabled)
             VALUES (:name, :base_url, :urls, :external_id, :format, :frequency, :enabled)
             RETURNING source_id, name, base_url, urls, external_id, format, frequency, enabled, last_sync_at
         """),
@@ -444,7 +444,7 @@ async def update_source(
     updates["source_id"] = source_id
     row = await db.execute(
         text(f"""
-            UPDATE harvest_sources
+            UPDATE source_files
             SET {set_clause}
             WHERE source_id = :source_id
             RETURNING source_id, name, base_url, urls, external_id, format, frequency, enabled, last_sync_at
@@ -471,7 +471,7 @@ async def delete_source(source_id: str, db: AsyncSession = Depends(get_session))
             detail=f"Cannot delete: {docs} document(s) ingested from this source",
         )
     await db.execute(
-        text("DELETE FROM harvest_sources WHERE source_id = :sid"), {"sid": source_id}
+        text("DELETE FROM source_files WHERE source_id = :sid"), {"sid": source_id}
     )
     await db.commit()
 
@@ -484,7 +484,7 @@ async def get_harvester_sources(db: AsyncSession = Depends(get_session)):
     rows = await db.execute(
         text("""
             SELECT source_id::text AS id, name, external_id, enabled
-            FROM harvest_sources
+            FROM source_files
             ORDER BY name
         """)
     )
@@ -509,7 +509,7 @@ async def start_harvester(
     source_cfgs: list[dict] = []
     for source in body.sources:
         row = await db.execute(
-            text("SELECT name, base_url, external_id, enabled FROM harvest_sources WHERE external_id = :eid"),
+            text("SELECT name, base_url, external_id, enabled FROM source_files WHERE external_id = :eid"),
             {"eid": source},
         )
         src = row.fetchone()
@@ -601,7 +601,7 @@ async def get_catalog(db: AsyncSession = Depends(get_session)):
                ds.description, ds.easa_url, ds.harvest_key,
                ds.doc_title_pattern, ds.ref_code_pattern,
                ds.is_active, ds.sort_order
-        FROM doc_sources ds
+        FROM regulations ds
         ORDER BY ds.sort_order, ds.id
     """))
     entries = list(src_rows.mappings())
@@ -631,10 +631,10 @@ async def get_catalog(db: AsyncSession = Depends(get_session)):
             part_counts[entry["id"]] = int(r["count"] or 0) if r else 0
             part_roots[entry["id"]] = r["part_root"] or "" if r else ""
 
-    # ── Fetch harvest_sources enabled status + source_id ─────────────────────
-    hs_rows = await db.execute(text("SELECT external_id, enabled, source_id::text FROM harvest_sources"))
-    harvest_sources_map: dict[str, dict] = {r[0]: {"enabled": r[1], "source_id": r[2]} for r in hs_rows}
-    harvest_enabled: dict[str, bool] = {k: v["enabled"] for k, v in harvest_sources_map.items()}
+    # ── Fetch source_files enabled status + source_id ──────────────────────────
+    hs_rows = await db.execute(text("SELECT external_id, enabled, source_id::text FROM source_files"))
+    source_files_map: dict[str, dict] = {r[0]: {"enabled": r[1], "source_id": r[2]} for r in hs_rows}
+    source_files_enabled: dict[str, bool] = {k: v["enabled"] for k, v in source_files_map.items()}
 
     result = []
     for entry in entries:
@@ -659,29 +659,29 @@ async def get_catalog(db: AsyncSession = Depends(get_session)):
             "amended_by":     info["amended_by"] if info else None,
             "node_count":     node_count,
             "harvest_key":       entry["harvest_key"],
-            "harvester_enabled": harvest_enabled.get(entry["harvest_key"], False) if entry["harvest_key"] else False,
-            "harvest_source_id": harvest_sources_map.get(entry["harvest_key"], {}).get("source_id") if entry["harvest_key"] else None,
+            "harvester_enabled": source_files_enabled.get(entry["harvest_key"], False) if entry["harvest_key"] else False,
+            "harvest_source_id": source_files_map.get(entry["harvest_key"], {}).get("source_id") if entry["harvest_key"] else None,
         })
     return result
 
 
 @router.post("/catalog", status_code=201)
 async def create_catalog_entry(body: dict, db: AsyncSession = Depends(get_session)):
-    """Create a new doc_sources entry."""
+    """Create a new regulations entry."""
     required = {"id", "name", "short", "category_id", "domain_id"}
     missing = required - body.keys()
     if missing:
         raise HTTPException(status_code=400, detail=f"Missing required fields: {missing}")
     # Check uniqueness
-    exists = await db.scalar(text("SELECT 1 FROM doc_sources WHERE id = :id"), {"id": body["id"]})
+    exists = await db.scalar(text("SELECT 1 FROM regulations WHERE id = :id"), {"id": body["id"]})
     if exists:
         raise HTTPException(status_code=409, detail=f"Document '{body['id']}' already exists")
     await db.execute(text("""
-        INSERT INTO doc_sources (id, name, short, category_id, domain_id, description, easa_url,
+        INSERT INTO regulations (id, name, short, category_id, domain_id, description, easa_url,
                                  harvest_key, doc_title_pattern, is_active, sort_order)
         VALUES (:id, :name, :short, :category_id, :domain_id, :description, :easa_url,
                 :harvest_key, :doc_title_pattern, TRUE,
-                (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM doc_sources))
+                (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM regulations))
     """), {
         "id":                body["id"],
         "name":              body["name"],
@@ -708,7 +708,7 @@ async def patch_catalog_entry(source_id: str, body: dict, db: AsyncSession = Dep
     updates["source_id"] = source_id
     updates["updated_at"] = "NOW()"
     result = await db.execute(
-        text(f"UPDATE doc_sources SET {set_clause}, updated_at = NOW() WHERE id = :source_id RETURNING id"),
+        text(f"UPDATE regulations SET {set_clause}, updated_at = NOW() WHERE id = :source_id RETURNING id"),
         updates,
     )
     if not result.fetchone():

@@ -218,8 +218,19 @@ CS29_SOURCE = {
     ],
 }
 
+# ── CS-AWO (PDF only) ─────────────────────────────────────────────────────────
+CSAWO_SOURCE = {
+    "source_key": "cs-awo",
+    "source_label": "CS-AWO \u2014 All Weather Operations",
+    "xml_external_id": None,
+    "versions": [
+        {"version_label": "Initial Issue", "url": f"{EASA}/en/document-library/certification-specifications/cs-awo-initial-issue", "pub_date": date(2003, 10, 17), "doc_type": "pdf"},
+        {"version_label": "Issue 2",       "url": f"{EASA}/en/document-library/easy-access-rules/easy-access-rules-all-weather-operations-cs-awo", "pub_date": date(2022, 3, 31), "doc_type": "pdf", "is_latest_pdf": True},
+    ],
+}
+
 ALL_SOURCES = [
-    CS25_SOURCE, CSACNS_SOURCE,
+    CS25_SOURCE, CSACNS_SOURCE, CSAWO_SOURCE,
     PART21_SOURCE, PART26_SOURCE,
     CONT_AW_SOURCE, AIR_OPS_SOURCE, AERODROMES_SOURCE, AIRCREW_SOURCE,
     CS23_SOURCE, CS27_SOURCE, CS29_SOURCE,
@@ -237,7 +248,7 @@ def populate(source: dict, conn) -> None:
         if xml_ext_id:
             cur.execute(
                 "SELECT doc_id FROM harvest_documents hd "
-                "JOIN harvest_sources hs ON hd.source_id = hs.source_id "
+                "JOIN source_files hs ON hd.source_id = hs.source_id "
                 "WHERE hs.external_id = %s AND hd.is_latest = TRUE "
                 "ORDER BY hd.fetched_at DESC LIMIT 1",
                 (xml_ext_id,),
