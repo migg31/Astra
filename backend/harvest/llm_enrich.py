@@ -23,14 +23,20 @@ import textwrap
 from pathlib import Path
 from typing import Any
 
-BATCH_SIZE = 12  # nodes per LLM call — keep context manageable
+BATCH_SIZE = 8  # nodes per LLM call — keep context manageable
 
 
 # ── LLM client (OpenAI-compatible) ───────────────────────────────────────────
 
-def _get_client():
+def _get_client(provider: str | None = None):
     from openai import OpenAI
     from backend.config import settings
+    if provider == "groq":
+        import os
+        return OpenAI(
+            base_url="https://api.groq.com/openai/v1",
+            api_key=settings.ollama_api_key if "groq" in settings.ollama_base_url else os.environ.get("GROQ_API_KEY", settings.ollama_api_key),
+        ), "llama-3.3-70b-versatile"
     return OpenAI(
         base_url=settings.ollama_base_url,
         api_key=settings.ollama_api_key,
@@ -116,12 +122,14 @@ def _extract_json(text: str) -> dict:
 
 # ── Main enrichment logic ─────────────────────────────────────────────────────
 
-def enrich(input_path: Path, *, verbose: bool = False) -> dict:
+def enrich(input_path: Path, *, verbose: bool = False, provider: str | None = None) -> dict:
     raw = json.loads(input_path.read_text(encoding="utf-8"))
     title = raw.get("title", "")
     nodes: list[dict] = raw.get("nodes", [])
 
-    client, model = _get_client()
+    client, model = _get_client(provider)
+    if verbose:
+        print(f"  Using model: {model}", file=sys.stderr)
     code_index = _build_code_index(nodes)
 
     # Index nodes by ref for quick lookup
@@ -208,6 +216,8 @@ def main() -> None:
     parser.add_argument("input", type=Path, help="Input Astra JSON file")
     parser.add_argument("--out", type=Path, default=None, help="Output file (default: stdout)")
     parser.add_argument("--verbose", "-v", action="store_true")
+    parser.add_argument("--provider", default=None, choices=["groq", "ollama"],
+                        help="LLM provider override (default: from config)")
     args = parser.parse_args()
 
     if not args.input.exists():
@@ -217,7 +227,7 @@ def main() -> None:
     if args.verbose:
         print(f"Enriching {args.input} ...", file=sys.stderr)
 
-    result = enrich(args.input, verbose=args.verbose)
+    result = enrich(args.input, verbose=args.verbose, provider=args.provider)
 
     n_nodes = len(result["nodes"])
     n_rels  = len(result["relations"])
