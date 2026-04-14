@@ -75,7 +75,7 @@ export function AdminConsole({ onClose }: AdminConsoleProps) {
   const [purgeResult, setPurgeResult] = useState<string | null>(null);
 
   // Add document form
-  const BLANK_DOC = { id: "", name: "", short: "", category_id: "", domain_id: "", easa_url: "", description: "", harvest_key: "", doc_title_pattern: "" };
+  const BLANK_DOC = { id: "", name: "", short: "", category_id: "", domain_id: "", easa_url: "", description: "" };
   const [showAddDoc, setShowAddDoc] = useState(false);
   const [newDoc, setNewDoc] = useState(BLANK_DOC);
   const [addDocSaving, setAddDocSaving] = useState(false);
@@ -573,16 +573,6 @@ export function AdminConsole({ onClose }: AdminConsoleProps) {
                     <div style={{ color: "#64748b", fontSize: "0.72rem", marginBottom: 3 }}>Description</div>
                     <input value={newDoc.description} onChange={e => setNewDoc(p => ({ ...p, description: e.target.value }))}
                       placeholder="Short description" style={{ width: "100%", background: "#1e293b", color: "#e2e8f0", border: "1px solid #334155", borderRadius: 4, padding: "4px 8px", fontSize: "0.8rem", boxSizing: "border-box" }} />
-                  </div>
-                  <div>
-                    <div style={{ color: "#64748b", fontSize: "0.72rem", marginBottom: 3 }}>Harvest key <span style={{ color: "#475569" }}>(external_id of harvest source)</span></div>
-                    <input value={newDoc.harvest_key} onChange={e => setNewDoc(p => ({ ...p, harvest_key: e.target.value }))}
-                      placeholder="e.g. easa-cs22" style={{ width: "100%", background: "#1e293b", color: "#e2e8f0", border: "1px solid #334155", borderRadius: 4, padding: "4px 8px", fontSize: "0.8rem", boxSizing: "border-box" }} />
-                  </div>
-                  <div>
-                    <div style={{ color: "#64748b", fontSize: "0.72rem", marginBottom: 3 }}>Doc title pattern <span style={{ color: "#475569" }}>(ILIKE, e.g. %CS-22%)</span></div>
-                    <input value={newDoc.doc_title_pattern} onChange={e => setNewDoc(p => ({ ...p, doc_title_pattern: e.target.value }))}
-                      placeholder="e.g. %CS-22%" style={{ width: "100%", background: "#1e293b", color: "#e2e8f0", border: "1px solid #334155", borderRadius: 4, padding: "4px 8px", fontSize: "0.8rem", boxSizing: "border-box" }} />
                   </div>
                 </div>
                 <button onClick={handleAddDoc} disabled={addDocSaving} className="admin-action-btn admin-action-btn--save" style={{ padding: "5px 18px" }}>
