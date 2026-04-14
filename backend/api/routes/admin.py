@@ -291,6 +291,7 @@ async def _run_harvester_task_multi(source_cfgs: list[dict], reindex_vectors: bo
                             content_hash=f.content_hash,
                             doc_format=f.format,
                             use_smart_parser=cfg.get("use_smart_parser", True),
+                            use_narrative_parser=cfg.get("use_narrative_parser", False),
                             seen_keys=seen_keys,
                             is_latest=True,
                             progress_callback=_log
@@ -525,6 +526,7 @@ async def start_harvester(
             "external_id": src.external_id,
             "urls": db_cfg.get("urls", {"xml": src.base_url}),
             "use_smart_parser": db_cfg.get("use_smart_parser", True),
+            "use_narrative_parser": db_cfg.get("use_narrative_parser", False),
         }
         source_cfgs.append(cfg)
 

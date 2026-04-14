@@ -23,6 +23,7 @@ from backend.harvest.easa_parser import parse_easa_xml
 from backend.harvest.easa_html_parser import parse_easa_html
 from backend.harvest.pdf_cs_parser import parse_cs_pdf
 from backend.harvest.pdf_smart_parser import parse_smart_pdf
+from backend.harvest.pdf_narrative_parser import parse_narrative_pdf
 from backend.harvest.models import ParseResult
 
 
@@ -65,11 +66,13 @@ def _load_sources_from_db() -> dict[str, dict]:
     for external_id, name, urls_json in rows:
         urls = urls_json or {}
         use_smart_parser = bool(urls.pop("use_smart_parser", True))
+        use_narrative_parser = bool(urls.pop("use_narrative_parser", False))
         sources[external_id] = {
             "name": name,
             "external_id": external_id,
             "urls": urls,
             "use_smart_parser": use_smart_parser,
+            "use_narrative_parser": use_narrative_parser,
         }
     return sources
 
@@ -325,8 +328,10 @@ def upsert_edges(cur, node_map: dict[tuple[str, str], str], result: ParseResult)
     return cur.rowcount  # actual rows inserted (excludes DO NOTHING conflicts)
 
 
-def ingest(file_path: Path, *, source_name: str, source_url: str, external_id: str, content_hash: str, doc_format: str = "xml", use_smart_parser: bool = True, seen_keys: set[tuple[str, str]] | None = None, is_latest: bool = False, progress_callback=None) -> dict:
-    if doc_format == "pdf" and not use_smart_parser:
+def ingest(file_path: Path, *, source_name: str, source_url: str, external_id: str, content_hash: str, doc_format: str = "xml", use_smart_parser: bool = True, use_narrative_parser: bool = False, seen_keys: set[tuple[str, str]] | None = None, is_latest: bool = False, progress_callback=None) -> dict:
+    if doc_format == "pdf" and use_narrative_parser:
+        result = parse_narrative_pdf(file_path, regulatory_source=source_name)
+    elif doc_format == "pdf" and not use_smart_parser:
         result = parse_cs_pdf(file_path, regulatory_source=source_name)
     elif doc_format == "pdf":
         result = parse_smart_pdf(file_path, regulatory_source=source_name, progress_callback=progress_callback)
