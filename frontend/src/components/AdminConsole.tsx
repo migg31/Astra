@@ -66,7 +66,7 @@ export function AdminConsole({ onClose }: AdminConsoleProps) {
   const [catalogMeta, setCatalogMeta] = useState<CatalogMeta | null>(null);
   const [catalogSaving, setCatalogSaving] = useState<string | null>(null);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
-  const [rowUrls, setRowUrls] = useState<Record<string, { xml: string; html: string; pdf: string }>>({});
+  const [rowUrls, setRowUrls] = useState<Record<string, { xml: string; html: string; pdf: string; json: string }>>({});
   const [rowSharedKey, setRowSharedKey] = useState<Record<string, string>>({});
   const [rowSaving, setRowSaving] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -569,7 +569,7 @@ export function AdminConsole({ onClose }: AdminConsoleProps) {
                     <input value={newDoc.easa_url} onChange={e => setNewDoc(p => ({ ...p, easa_url: e.target.value }))}
                       placeholder="https://www.easa.europa.eu/..." style={{ width: "100%", background: "#1e293b", color: "#e2e8f0", border: "1px solid #334155", borderRadius: 4, padding: "4px 8px", fontSize: "0.8rem", boxSizing: "border-box" }} />
                   </div>
-                  <div style={{ gridColumn: "1 / -1" }}>
+                  <div>
                     <div style={{ color: "#64748b", fontSize: "0.72rem", marginBottom: 3 }}>Description</div>
                     <input value={newDoc.description} onChange={e => setNewDoc(p => ({ ...p, description: e.target.value }))}
                       placeholder="Short description" style={{ width: "100%", background: "#1e293b", color: "#e2e8f0", border: "1px solid #334155", borderRadius: 4, padding: "4px 8px", fontSize: "0.8rem", boxSizing: "border-box" }} />
@@ -619,7 +619,8 @@ export function AdminConsole({ onClose }: AdminConsoleProps) {
               </select>
               {(filterCat !== "all" || filterDomain !== "all" || filterNavigate !== "all" || filterIndexed !== "all" || filterHarvest !== "all" || docSearch) && (
                 <button onClick={() => { setFilterCat("all"); setFilterDomain("all"); setFilterNavigate("all"); setFilterIndexed("all"); setFilterHarvest("all"); setDocSearch(""); }}
-                  style={{ background: "none", border: "1px solid #475569", borderRadius: 4, color: "#94a3b8", cursor: "pointer", padding: "4px 10px", fontSize: "0.78rem" }}>
+                  style={{ background: "none", border: "1px solid #475569", borderRadius: 4, color: "#94a3b8", cursor: "pointer", padding: "4px 10px", fontSize: "0.78rem" }}
+                >
                   ✕ Clear
                 </button>
               )}
@@ -736,7 +737,8 @@ export function AdminConsole({ onClose }: AdminConsoleProps) {
                               {regSrc.urls?.xml && <a href={regSrc.urls.xml} target="_blank" rel="noreferrer" className="admin-link">XML</a>}
                               {regSrc.urls?.html && <a href={regSrc.urls.html} target="_blank" rel="noreferrer" className="admin-link">HTML</a>}
                               {regSrc.urls?.pdf && <a href={regSrc.urls.pdf} target="_blank" rel="noreferrer" className="admin-link">PDF</a>}
-                              {!regSrc.urls?.xml && !regSrc.urls?.html && !regSrc.urls?.pdf && regSrc.base_url && (
+                              {regSrc.urls?.json && <span style={{ color: "#38bdf8", fontSize: "0.72rem", fontFamily: "monospace" }} title={regSrc.urls.json}>JSON</span>}
+                              {!regSrc.urls?.xml && !regSrc.urls?.html && !regSrc.urls?.pdf && !regSrc.urls?.json && regSrc.base_url && (
                                 <a href={regSrc.base_url} target="_blank" rel="noreferrer" className="admin-link">EASA ↗</a>
                               )}
                             </div>
@@ -757,6 +759,7 @@ export function AdminConsole({ onClose }: AdminConsoleProps) {
                                   xml:  regSrc?.urls?.xml  ?? "",
                                   html: regSrc?.urls?.html ?? "",
                                   pdf:  regSrc?.urls?.pdf  ?? "",
+                                  json: regSrc?.urls?.json ?? "",
                                 }}));
                               }
                             }}
@@ -767,7 +770,7 @@ export function AdminConsole({ onClose }: AdminConsoleProps) {
                         </td>
                       </tr>
                       {expandedRow === entry.id && (() => {
-                        const urls = rowUrls[entry.id] ?? { xml: "", html: "", pdf: "" };
+                        const urls = rowUrls[entry.id] ?? { xml: "", html: "", pdf: "", json: "" };
                         const sharedKey = rowSharedKey[entry.id] ?? "";
                         const usingShare = !entry.harvest_source_id && sharedKey !== "";
                         const docsWithSource = catalogEntries.filter(e => e.harvest_key && e.id !== entry.id);
@@ -802,6 +805,15 @@ export function AdminConsole({ onClose }: AdminConsoleProps) {
                                       value={urls.pdf}
                                       onChange={e => setRowUrls(prev => ({ ...prev, [entry.id]: { ...prev[entry.id], pdf: e.target.value } }))}
                                       placeholder="https://easa.europa.eu/en/downloads/XXXXXX/en"
+                                      style={{ background: "#1e293b", color: "#e2e8f0", border: "1px solid #334155", borderRadius: 4, padding: "5px 8px", fontSize: "0.8rem", width: "100%", boxSizing: "border-box" }}
+                                    />
+                                  </div>
+                                  <div>
+                                    <div style={{ color: "#64748b", fontSize: "0.72rem", marginBottom: 3 }}>JSON local <span style={{ color: "#475569" }}>(chemin relatif à data/)</span></div>
+                                    <input
+                                      value={urls.json}
+                                      onChange={e => setRowUrls(prev => ({ ...prev, [entry.id]: { ...prev[entry.id], json: e.target.value } }))}
+                                      placeholder="raw/easa/2026-04-14/amc20-26/enriched.json"
                                       style={{ background: "#1e293b", color: "#e2e8f0", border: "1px solid #334155", borderRadius: 4, padding: "5px 8px", fontSize: "0.8rem", width: "100%", boxSizing: "border-box" }}
                                     />
                                   </div>
@@ -842,7 +854,7 @@ export function AdminConsole({ onClose }: AdminConsoleProps) {
                                       if (usingShare) {
                                         await patchCatalogEntry(entry.id, { harvest_key: sharedKey });
                                       } else {
-                                        const base_url = urls.xml || urls.pdf || entry.easa_url;
+                                        const base_url = urls.xml || urls.pdf || urls.json || entry.easa_url;
                                         if (entry.harvest_source_id) {
                                           await updateSource(entry.harvest_source_id, { urls, base_url });
                                         } else {
