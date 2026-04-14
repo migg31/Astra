@@ -2,34 +2,38 @@ import { useState } from "react";
 import type { CatalogEntry, VersionCheckResult } from "../api";
 
 const CATEGORY_LABELS: Record<string, string> = {
-  basic: "Basic Regulation",
-  ir:    "Implementing Rules",
-  cs:    "Certification Specifications",
-  amcgm: "AMC & GM",
+  basic:  "Basic Regulation",
+  ir:     "Implementing Rules",
+  cs:     "Certification Specifications",
+  amcgm:  "AMC & GM",
+  other:  "Other",
 };
 
-const CATEGORY_ORDER = ["basic", "ir", "cs", "amcgm"];
+const CATEGORY_ORDER = ["basic", "ir", "cs", "amcgm", "other"];
 
 const CATEGORY_COLORS: Record<string, { accent: string; light: string; border: string }> = {
-  basic: { accent: "#0f172a", light: "#e2e8f0", border: "#94a3b8" },
-  ir:    { accent: "#1e40af", light: "#dbeafe", border: "#3b82f6" },
-  cs:    { accent: "#155e75", light: "#cffafe", border: "#06b6d4" },
-  amcgm: { accent: "#14532d", light: "#dcfce7", border: "#22c55e" },
+  basic:  { accent: "#0f172a", light: "#e2e8f0", border: "#94a3b8" },
+  ir:     { accent: "#1e40af", light: "#dbeafe", border: "#3b82f6" },
+  cs:     { accent: "#155e75", light: "#cffafe", border: "#06b6d4" },
+  amcgm:  { accent: "#14532d", light: "#dcfce7", border: "#22c55e" },
+  other:  { accent: "#44403c", light: "#e7e5e4", border: "#78716c" },
 };
+const DEFAULT_CAT_COLOR = { accent: "#44403c", light: "#e7e5e4", border: "#78716c" };
 
 // Fine-grained domain palette — saturated, clearly distinct
 // "initial-airworthiness" and "avionics" share the same visual group (teal)
 const DOMAIN_COLORS: Record<string, { bg: string; text: string; border: string; label: string }> = {
   "framework":               { bg: "#1e293b", text: "#f1f5f9",  border: "#334155", label: "Framework" },
   "initial-airworthiness":   { bg: "#78350f", text: "#fde68a",  border: "#d97706", label: "Initial Airworthiness" },
-  "avionics":                { bg: "#78350f", text: "#fde68a",  border: "#d97706", label: "Initial Airworthiness" },
+  "avionics":                { bg: "#78350f", text: "#fde68a",  border: "#d97706", label: "Avionics / CNS" },
   "continuing-airworthiness":{ bg: "#1e3a8a", text: "#dbeafe",  border: "#2563eb", label: "Continuing Airworthiness" },
   "air-operations":          { bg: "#4c1d95", text: "#e9d5ff",  border: "#7c3aed", label: "Air Operations" },
   "aircrew":                 { bg: "#0c4a6e", text: "#bae6fd",  border: "#0284c7", label: "Aircrew" },
   "aerodromes":              { bg: "#134e4a", text: "#99f6e4",  border: "#14b8a6", label: "Aerodromes" },
+  "other":                   { bg: "#292524", text: "#e7e5e4",  border: "#78716c", label: "Other" },
 };
 
-// Canonical filter pills — one per visual group (avionics merged into initial-airworthiness)
+// Canonical filter pills
 const DOMAIN_FILTER_ORDER = [
   "framework",
   "initial-airworthiness",
@@ -37,11 +41,12 @@ const DOMAIN_FILTER_ORDER = [
   "air-operations",
   "aircrew",
   "aerodromes",
-] as const;
+  "avionics",
+  "other",
+];
 
-// Map data-domain → filter pill key
 function domainFilterKey(domain: string): string {
-  return domain === "avionics" ? "initial-airworthiness" : domain;
+  return domain;
 }
 
 interface Props {
@@ -75,6 +80,7 @@ function DocCard({
   // canExplore requires source_root to be present in availableSources (doc loaded in memory).
   const root = entry.source_root ?? null;
   const canExplore = entry.indexed && root !== null && availableSources.has(root);
+  const inactive = entry.is_active === false;
 
   function handleClick() {
     if (canExplore && root) {
@@ -90,9 +96,9 @@ function DocCard({
     return (
       <div
         className="nav-card nav-card--indexed"
-        onClick={handleClick}
-        style={{ background: domain.bg, borderColor: domain.border }}
-        title={canExplore ? `Open ${entry.short} in Consult` : `Indexed`}
+        onClick={inactive ? undefined : handleClick}
+        style={{ background: domain.bg, borderColor: domain.border, opacity: inactive ? 0.45 : 1, cursor: inactive ? "default" : undefined }}
+        title={inactive ? `${entry.short} — not active in Astra` : canExplore ? `Open ${entry.short} in Consult` : `Indexed`}
       >
         <div className="nav-card-header">
           <span className="nav-card-short" style={{ color: domain.text }}>{entry.short}</span>
@@ -140,8 +146,9 @@ function DocCard({
   return (
     <div
       className="nav-card nav-card--missing"
-      onClick={handleClick}
-      title={`Not indexed — open on easa.europa.eu`}
+      onClick={inactive ? undefined : handleClick}
+      style={{ opacity: inactive ? 0.4 : 1, cursor: inactive ? "default" : undefined }}
+      title={inactive ? `${entry.short} — not active in Astra` : `Not indexed — open on easa.europa.eu`}
     >
       <div className="nav-card-header">
         <span className="nav-card-short">{entry.short}</span>
@@ -200,7 +207,13 @@ export function NavigatePanel({ catalog, versionChecks = [], availableSources, o
     return true;
   });
 
-  const byCategory = CATEGORY_ORDER.reduce<Record<string, CatalogEntry[]>>((acc, cat) => {
+  // Build category order dynamically: known order first, then any unknown categories
+  const allCats = [...new Set(catalog.map((e) => e.category))];
+  const orderedCats = [
+    ...CATEGORY_ORDER.filter((c) => allCats.includes(c)),
+    ...allCats.filter((c) => !CATEGORY_ORDER.includes(c)),
+  ];
+  const byCategory = orderedCats.reduce<Record<string, CatalogEntry[]>>((acc, cat) => {
     const items = filtered.filter((e) => e.category === cat);
     if (items.length > 0) acc[cat] = items;
     return acc;
@@ -208,7 +221,11 @@ export function NavigatePanel({ catalog, versionChecks = [], availableSources, o
 
   // Only show filter pills for domains that exist in the catalog
   const usedFilterKeys = new Set(catalog.map((e) => domainFilterKey(e.domain)));
-  const domainFilters = DOMAIN_FILTER_ORDER.filter((d) => usedFilterKeys.has(d));
+  const allDomains = [...new Set(catalog.map((e) => e.domain))];
+  const domainFilters = [
+    ...DOMAIN_FILTER_ORDER.filter((d) => usedFilterKeys.has(d)),
+    ...allDomains.filter((d) => !DOMAIN_FILTER_ORDER.includes(d) && usedFilterKeys.has(d)),
+  ];
   const indexedCount = catalog.filter((e) => e.indexed).length;
 
   return (
@@ -234,8 +251,8 @@ export function NavigatePanel({ catalog, versionChecks = [], availableSources, o
         <div className="nav-filters">
           <div className="nav-filter-group">
             <span className="nav-filter-label">Category</span>
-            {CATEGORY_ORDER.map((cat) => {
-              const cc = CATEGORY_COLORS[cat];
+            {CATEGORY_ORDER.filter((cat) => allCats.includes(cat)).map((cat) => {
+              const cc = CATEGORY_COLORS[cat] ?? DEFAULT_CAT_COLOR;
               const isVisible = !excludedCategories.has(cat);
               return (
                 <button
@@ -283,7 +300,7 @@ export function NavigatePanel({ catalog, versionChecks = [], availableSources, o
           <div className="nav-filter-group">
             <span className="nav-filter-label">Domain</span>
             {domainFilters.map((d) => {
-              const dc = DOMAIN_COLORS[d];
+              const dc = DOMAIN_COLORS[d] ?? { bg: "#292524", text: "#e7e5e4", border: "#78716c", label: d };
               const isVisible = !excludedDomains.has(d);
               return (
                 <button

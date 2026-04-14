@@ -29,8 +29,8 @@ INSERT INTO harvest_sources (name, base_url, external_id, format, frequency, ena
      'https://www.easa.europa.eu/en/downloads/136674/en',
      'easa-csacns', 'MIXED', 'monthly', TRUE),
     ('CS-AWO — All Weather Operations',
-     'https://www.easa.europa.eu/en/downloads/136677/en',
-     'easa-csawo', 'MIXED', 'monthly', TRUE)
+     'https://www.easa.europa.eu/document-library/easy-access-rules/online-publications/easy-access-rules-all-weather-operations-cs',
+     'cs-awo', 'MIXED', 'monthly', TRUE)
 ON CONFLICT (name) DO UPDATE
     SET base_url    = EXCLUDED.base_url,
         external_id = EXCLUDED.external_id,

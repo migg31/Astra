@@ -1512,6 +1512,63 @@ body,
   font-size: 1.1rem;
 }
 
+/* ---------- plain-text article renderer (PDF sources: CS-AWO etc.) ---------- */
+
+.article-text {
+  font-size: 0.9375rem;
+  line-height: 1.65;
+  color: #1f2937;
+}
+.article-text .pt-para {
+  margin: 0.6rem 0;
+}
+.article-text .pt-indent-1 { padding-left: 1.5rem; }
+.article-text .pt-indent-2 { padding-left: 3rem; }
+.article-text .pt-indent-3 { padding-left: 4.5rem; }
+.article-text .pt-section-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  margin: 1.4rem 0 0.5rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #27ACCC;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 0.25rem;
+}
+.article-text .pt-section-num {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #9ca3af;
+  min-width: 1.4rem;
+}
+.article-text .pt-table {
+  border-collapse: collapse;
+  margin: 0.75rem 0;
+  font-size: 0.875rem;
+  width: auto;
+  max-width: 100%;
+}
+.article-text .pt-table td {
+  border: 1px solid #e2e8f0;
+  padding: 0.3rem 0.6rem;
+  vertical-align: top;
+  text-align: left;
+}
+.article-text .pt-table tr:nth-child(odd) td {
+  background: #f8fafc;
+}
+.article-text .pt-note {
+  background: #f8fafc;
+  border-left: 3px solid #cbd5e1;
+  padding: 0.35rem 0.75rem;
+  border-radius: 0 4px 4px 0;
+  color: #475569;
+  font-size: 0.88rem;
+  font-style: italic;
+  margin: 0.5rem 0;
+}
+
 /* ---------- neighbors panel ---------- */
 
 .neighbors-panel {
@@ -1772,6 +1829,40 @@ body,
   color: #64748b;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+.admin-big-stat-skeleton {
+  display: block;
+  width: 60%;
+  height: 1.75rem;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+  background-size: 200% 100%;
+  animation: admin-shimmer 1.4s infinite;
+}
+@keyframes admin-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.admin-spinner {
+  color: #94a3b8;
+  animation: admin-spin 1s linear infinite;
+}
+@keyframes admin-spin {
+  to { transform: rotate(360deg); }
+}
+.admin-nav-badge {
+  font-size: 0.6rem;
+  font-weight: 700;
+  background: rgba(255,255,255,0.12);
+  color: #94a3b8;
+  border-radius: 10px;
+  padding: 1px 6px;
+  min-width: 18px;
+  text-align: center;
+}
+.admin-nav-item.is-active .admin-nav-badge {
+  background: rgba(96,165,250,0.2);
+  color: #93c5fd;
 }
 
 /* Two-col layout */

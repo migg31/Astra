@@ -37,7 +37,11 @@ export function DocumentHistoryPanel({ sourceKey, sourceLabel, onClose }: Props)
       {loading && <div className="dhl-state">Loading…</div>}
       {error   && <div className="dhl-state dhl-state--error">{error}</div>}
 
-      {history && (
+      {history && history.versions.length === 0 && (
+        <div className="dhl-state">No version history available for this source.</div>
+      )}
+
+      {history && history.versions.length > 0 && (
         <div className="dhl-list">
           {history.versions.map((v) => (
             <VersionRow key={v.version_id} v={v} />

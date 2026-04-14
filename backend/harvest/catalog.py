@@ -282,6 +282,7 @@ CATALOG: list[CatalogEntry] = [
         domain="avionics",
         description="Certification specifications for all weather operations (PDF only — no XML available).",
         easa_url="https://www.easa.europa.eu/en/document-library/certification-specifications/cs-awo-amendment-3",
+        doc_title_pattern="%CS-AWO%",
         harvest_key="cs-awo",
     ),
     CatalogEntry(

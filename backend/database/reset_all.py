@@ -31,10 +31,16 @@ MIGRATION_FILES = [
     "009_node_versioning.sql",
     "010_harvest_doc_is_latest.sql",
     "011_regulatory_document_versions.sql",
+    "012_pgvector.sql",
+    "013_add_sources_urls.sql",
+    "014_doc_catalog.sql",
 ]
 
 DROP_SQL = """
 DROP TABLE IF EXISTS
+    doc_sources,
+    doc_domains,
+    doc_categories,
     regulatory_document_versions,
     regulatory_node_versions,
     document_harvest_runs,

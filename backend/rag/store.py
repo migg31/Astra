@@ -169,3 +169,30 @@ def count() -> int:
         with conn.cursor() as cur:
             cur.execute("SELECT COUNT(*) FROM node_embeddings")
             return cur.fetchone()[0]
+
+
+def purge() -> dict[str, int]:
+    """Truncate all indexed data tables. Preserves catalog and harvest source config."""
+    tables = [
+        "node_embeddings",
+        "regulatory_nodes",
+        "harvest_documents",
+        "harvest_document_versions",
+        "document_harvest_runs",
+        "regulatory_node_versions",
+        "regulatory_changes",
+        "regulatory_edges",
+    ]
+    counts: dict[str, int] = {}
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            for table in tables:
+                cur.execute(f"SELECT COUNT(*) FROM {table}")
+                counts[table] = cur.fetchone()[0]
+            cur.execute(
+                "TRUNCATE TABLE node_embeddings, regulatory_nodes, harvest_documents, "
+                "harvest_document_versions, document_harvest_runs, regulatory_node_versions, "
+                "regulatory_changes, regulatory_edges RESTART IDENTITY CASCADE"
+            )
+        conn.commit()
+    return counts

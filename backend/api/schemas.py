@@ -83,10 +83,17 @@ class GraphResponse(BaseModel):
 
 # --- Regulatory Sources ---
 
+class SourceUrls(BaseModel):
+    xml: str | None = None
+    html: str | None = None
+    pdf: str | None = None
+
+
 class RegulatorySourceOut(BaseModel):
     source_id: UUID
     name: str
     base_url: str
+    urls: SourceUrls | None = None
     external_id: str | None
     format: str
     frequency: str
@@ -97,6 +104,7 @@ class RegulatorySourceOut(BaseModel):
 class RegulatorySourceCreate(BaseModel):
     name: str
     base_url: str
+    urls: SourceUrls | None = None
     external_id: str
     format: str = "MIXED"
     frequency: str = "monthly"
@@ -106,4 +114,5 @@ class RegulatorySourceCreate(BaseModel):
 class RegulatorySourceUpdate(BaseModel):
     name: str | None = None
     base_url: str | None = None
+    urls: SourceUrls | None = None
     enabled: bool | None = None

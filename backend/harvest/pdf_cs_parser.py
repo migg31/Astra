@@ -46,6 +46,13 @@ _CS25_LEGACY_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Pattern to detect CS-AWO article headings
+# e.g. "CS AWO.A.ALS.101"  "AMC1 AWO.B.CAT.230"  "GM1 AWO.D.LVO.105"
+_AWO_HEADING_RE = re.compile(
+    r"^((?:CS|AMC\d*|GM\d*)\s+AWO\.\S+)",
+    re.IGNORECASE,
+)
+
 # Pattern to extract reference code from heading
 # e.g. "CS 25.581 Lightning protection" → "CS 25.581"
 # e.g. "AMC 25.581 Lightning protection" → "AMC 25.581"
@@ -60,8 +67,10 @@ _REF_APPENDIX_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Heading sizes that denote SUBPART or SECTION (structural, not articles)
-_STRUCTURAL_SIZE_MIN = 17.5
+# Heading sizes that denote SUBPART (top level) or SECTION (sub-level)
+_SUBPART_SIZE_MIN  = 19.5   # e.g. CS-AWO "SUBPART A" at 20pt
+_SECTION_SIZE_MIN  = 17.5   # e.g. CS-AWO "SECTION 1" at 17.6–18pt
+_STRUCTURAL_SIZE_MIN = _SECTION_SIZE_MIN   # kept for other parsers
 
 # Ignore page header/footer patterns
 _PAGE_HEADER_RE = re.compile(
@@ -115,34 +124,119 @@ class _Block:
 
 
 def _extract_blocks(page: pymupdf.Page) -> list[_Block]:
-    """Extract text blocks with their dominant font size and bold flag."""
-    blocks: list[_Block] = []
+    """Extract text blocks with their dominant font size and bold flag.
+
+    Groups spans by Y-coordinate across all PDF blocks on the page to handle
+    justified text where PyMuPDF fragments a single visual line into multiple
+    blocks (one per word) due to variable inter-word spacing.
+    """
+    # ── Step 1: collect all (y_key, x, text, size, bold) from every span ──────
+    Y_SNAP = 2.0  # px tolerance to consider two spans on the same line
+    raw: list[tuple[float, float, str, float, bool]] = []
     for b in page.get_text("dict")["blocks"]:
         if b.get("type") != 0:
             continue
-        lines_text: list[str] = []
-        sizes: list[float] = []
-        bolds: list[bool] = []
         for line in b.get("lines", []):
-            line_parts: list[str] = []
+            lbbox = line.get("bbox", [0, 0, 0, 0])
+            y_center = (lbbox[1] + lbbox[3]) / 2
             for span in line.get("spans", []):
                 t = span["text"].replace("\xa0", " ")
-                t = " ".join(t.split())  # collapse all whitespace
+                t = " ".join(t.split())
                 if not t:
                     continue
-                line_parts.append(t)
-                sizes.append(span["size"])
-                bolds.append("Bold" in span["font"])
-            if line_parts:
-                lines_text.append(" ".join(line_parts))
-        if not lines_text:
+                raw.append((y_center, span["bbox"][0], t, span["size"], "Bold" in span["font"]))
+
+    if not raw:
+        return []
+
+    # ── Step 1b: merge superscript spans (sz < 8) into the preceding token ───
+    # e.g. "10" (sz=10) + "-6" (sz=6.5) → "10-6"
+    SUPERSCRIPT_MAX = 8.0
+    merged: list[tuple[float, float, str, float, bool]] = []
+    for item in raw:
+        if merged and item[3] < SUPERSCRIPT_MAX:
+            prev = merged[-1]
+            # Only merge if very close X (adjacent superscript)
+            if abs(item[1] - (prev[1] + prev[3] * 0.55 * len(prev[2]))) < 10:
+                merged[-1] = (prev[0], prev[1], prev[2] + item[2], prev[3], prev[4])
+                continue
+        merged.append(item)
+    raw = merged
+
+    # ── Step 2: group spans by Y (snap within Y_SNAP tolerance) ──────────────
+    raw.sort(key=lambda r: (r[0], r[1]))  # sort by y then x
+
+    groups: list[list[tuple[float, float, str, float, bool]]] = []
+    current: list[tuple[float, float, str, float, bool]] = [raw[0]]
+    for item in raw[1:]:
+        if abs(item[0] - current[0][0]) <= Y_SNAP:
+            current.append(item)
+        else:
+            groups.append(current)
+            current = [item]
+    groups.append(current)
+
+    # ── Step 3: merge Y-groups into logical paragraph blocks ─────────────────
+    # Consecutive Y-groups that share dominant size+bold → same block
+    # Column gap threshold: if two spans on the same row are separated by > this
+    # many points, they belong to different table columns (use \t as separator).
+    COL_GAP = 30.0
+    # Pattern that typically starts a table-value column (number or "Not applicable")
+    _COL_VAL_RE = re.compile(r"^\d|^Not\s+applicable", re.IGNORECASE)
+    line_records: list[tuple[str, float, bool]] = []
+    for grp in groups:
+        grp.sort(key=lambda r: r[1])  # sort by x
+        sizes = [r[3] for r in grp]
+        bolds = [r[4] for r in grp]
+        avg_size = sum(sizes) / len(sizes)
+        is_bold = sum(bolds) > len(bolds) / 2
+
+        # Build line text: group consecutive spans into column chunks,
+        # separated by \t when a large horizontal gap AND the next chunk
+        # looks like a table value (digit or "Not applicable").
+        col_chunks: list[list[str]] = [[]]
+        prev_x_end: float = grp[0][1]
+        for r in grp:
+            x_start = r[1]
+            gap = x_start - prev_x_end
+            is_col_break = gap > COL_GAP and _COL_VAL_RE.match(r[2])
+            if col_chunks and is_col_break:
+                col_chunks.append([])
+            col_chunks[-1].append(r[2])
+            prev_x_end = x_start + r[3] * 0.55 * len(r[2])
+
+        line_text = "\t".join(" ".join(ch) for ch in col_chunks if ch)
+
+        line_records.append((line_text, round(avg_size, 1), is_bold))
+
+    # Group consecutive lines with same size+bold into a single _Block
+    # Lines containing \t (table columns) are never merged with neighbors.
+    blocks: list[_Block] = []
+    i = 0
+    while i < len(line_records):
+        line_text, sz, bold = line_records[i]
+        if "\t" in line_text:
+            # Table row — keep as its own block
+            if line_text.strip():
+                blocks.append(_Block(text=line_text.strip(), size=sz, bold=bold))
+            i += 1
             continue
-        text = "\n".join(lines_text).strip()
-        if not text:
-            continue
-        avg_size = sum(sizes) / len(sizes) if sizes else 0
-        dominant_bold = sum(bolds) > len(bolds) / 2
-        blocks.append(_Block(text=text, size=avg_size, bold=dominant_bold))
+        block_lines = [line_text]
+        j = i + 1
+        while j < len(line_records):
+            next_text, next_sz, next_bold = line_records[j]
+            if "\t" in next_text:
+                break  # next line is a table row → stop merging
+            if abs(next_sz - sz) < 0.5 and next_bold == bold:
+                block_lines.append(next_text)
+                j += 1
+            else:
+                break
+        text = "\n".join(block_lines).strip()
+        if text:
+            blocks.append(_Block(text=text, size=sz, bold=bold))
+        i = j
+
     return blocks
 
 
@@ -166,8 +260,11 @@ def parse_cs_pdf(pdf_path: Path, *, regulatory_source: str | None = None) -> Par
     current_heading: str | None = None
     current_type: str | None = None
     current_body_parts: list[str] = []
+    current_subpart: str = ""   # top-level structural label (SUBPART A, GENERAL AMC…)
+    current_section: str = ""   # sub-level structural label (SECTION 1, CATEGORY II…)
     current_hierarchy: str = doc_title  # default: just the doc title as root
     legacy_mode: bool = False  # True when current article was detected by pattern (small fonts)
+    in_toc: bool = True  # True until we encounter the first real structural heading
 
     def _flush() -> None:
         if current_heading is None or current_type is None:
@@ -198,9 +295,11 @@ def parse_cs_pdf(pdf_path: Path, *, regulatory_source: str | None = None) -> Par
 
             # Legacy pattern detection (small-font PDFs) — must run before size filters
             is_article_by_pattern = blk.bold and (
-                bool(_ACNS_HEADING_RE.match(text)) or bool(_CS25_LEGACY_RE.match(text))
+                bool(_ACNS_HEADING_RE.match(text))
+                or bool(_CS25_LEGACY_RE.match(text))
+                or bool(_AWO_HEADING_RE.match(text))
             )
-            if is_article_by_pattern:
+            if is_article_by_pattern and not in_toc:
                 node_type = _node_type(text)
                 if node_type:
                     _flush()
@@ -214,25 +313,55 @@ def parse_cs_pdf(pdf_path: Path, *, regulatory_source: str | None = None) -> Par
             if size <= PAGE_HEADER_SIZE_MAX:
                 continue
 
-            # Structural heading (subpart / section) — flush current, update hierarchy
-            if size >= _STRUCTURAL_SIZE_MIN and blk.bold:
+            # Structural headings — two levels for CS-AWO style docs
+            if size >= _SECTION_SIZE_MIN and blk.bold:
                 _flush()
                 current_heading = None
                 current_type = None
                 current_body_parts = []
-                subpart_label = " ".join(text.replace("\xa0", " ").replace("\n", " ").split())
-                # Collapse letter-spaced uppercase words: 'S UBPART' → 'SUBPART', 'S ECTION' → 'SECTION'
-                subpart_label = re.sub(r'\b([A-Z]) ([A-Z]{2,})\b', r'\1\2', subpart_label)
-                current_hierarchy = doc_title + " / " + subpart_label
+                label = " ".join(text.replace("\xa0", " ").replace("\n", " ").split())
+                # Collapse letter-spaced uppercase words: 'S UBPART' → 'SUBPART'
+                label = re.sub(r'\b([A-Z]) ([A-Z]{2,})\b', r'\1\2', label)
+                if size >= _SUBPART_SIZE_MIN:
+                    # Top-level: SUBPART A, GENERAL AMC, etc.
+                    current_subpart = label
+                    current_section = ""
+                    current_hierarchy = doc_title + " / " + label
+                else:
+                    # Sub-level: SECTION 1, CATEGORY II, VISIBILITY, etc.
+                    current_section = label
+                    if current_subpart:
+                        current_hierarchy = doc_title + " / " + current_subpart + " / " + label
+                    else:
+                        current_hierarchy = doc_title + " / " + label
                 legacy_mode = False
+                # Only exit ToC mode when we hit a real document heading
+                # (SUBPART, SECTION, GENERAL — not DISCLAIMER/TABLE OF CONTENTS/NOTE…)
+                if re.search(r'\b(SUBPART|SECTION|GENERAL|CHAPTER)\b', label, re.IGNORECASE):
+                    in_toc = False
+                continue
+
+            # Skip article headings until the first real SUBPART/SECTION is seen
+            # (avoids capturing ToC entries as article nodes)
+            if in_toc:
                 continue
 
             # Article heading — detected by font size (modern Calibri PDFs)
             if size >= ARTICLE_SIZE_MIN and blk.bold:
-                node_type = _node_type(text)
+                # Block may be prefixed by a section label on its own line
+                # e.g. "GENERAL\nCS AWO.A.ALS.101 Applicability" — strip prefix line
+                # Also strip trailing tab-separated annotations ("ED Decision 2022/..")
+                heading_text = text.split("\t")[0].strip()
+                if "\n" in heading_text:
+                    lines = heading_text.splitlines()
+                    for li, ln in enumerate(lines):
+                        if _node_type(ln.strip()):
+                            heading_text = "\n".join(lines[li:]).strip()
+                            break
+                node_type = _node_type(heading_text)
                 if node_type:
                     _flush()
-                    current_heading = text.replace("\n", " ").strip()
+                    current_heading = heading_text.replace("\n", " ").strip()
                     current_type = node_type
                     current_body_parts = []
                     legacy_mode = False
@@ -243,6 +372,9 @@ def parse_cs_pdf(pdf_path: Path, *, regulatory_source: str | None = None) -> Par
                 current_body_parts.append(text)
 
     _flush()
+
+    # Drop spurious nodes: no digit in ref (e.g. "CS S") or empty body (TOC line false positives)
+    nodes = [n for n in nodes if re.search(r"\d", n.reference_code) and n.content_text.strip()]
 
     # Deduplicate by (node_type, reference_code) — keep last occurrence
     seen: dict[tuple[str, str], ParsedNode] = {}
