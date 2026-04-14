@@ -19,8 +19,9 @@ from backend.harvest.models import ParsedNode, ParseResult
 
 _SECTION_RE = re.compile(r"^(\d+(?:\.\d+)*)(?:\s+(.+))?$")
 _PAGE_FOOTER_RE = re.compile(
-    r"^(AMC\s*\d+\s*$|Page\s+\d+\s+of\s+\d+|Powered by EASA|©\s*\d{4}|Annex\s+(I|II|III|IV|V|VI|VII))", re.IGNORECASE
+    r"^(Page\s+\d+\s+of\s+\d+|Powered by EASA|©\s*\d{4}|Annex\s+(I|II|III|IV|V|VI|VII)\s+to\b)", re.IGNORECASE
 )
+_ANNEX_HEADER_RE = re.compile(r"^(AMC|GM)\s+([\d]+(?:[\s\-\.]+\d+)*)\s*$")  # e.g. "AMC 2026", "AMC 20-26"
 _TOC_DOT_RE = re.compile(r"\.{4,}")  # lines of dots = TOC
 _SMALL_CAP_SIZE = 8.5  # spans below this are "small caps" artifacts — skip
 
@@ -41,7 +42,7 @@ def _extract_lines(page: pymupdf.Page) -> list[_Line]:
         for line in block["lines"]:
             parts: list[tuple[str, bool, float]] = []
             for span in line["spans"]:
-                txt = span["text"]
+                txt = span["text"].replace("\xa0", " ").replace("\xad", "-")
                 if not txt.strip():
                     continue
                 bold = bool(span["flags"] & (2**4))
@@ -112,9 +113,22 @@ def parse_narrative_pdf(
         result.source_document_title = " ".join(title_parts[:3])  # first 3 unique bold lines
 
     # ── Pass 1: collect all lines across pages ────────────────────────────
-    all_lines: list[_Line] = []
+    # Lines tagged with optional annex_prefix (e.g. "AMC 2026", "AMC 2027")
+    all_lines: list[tuple[_Line, str]] = []  # (line, annex_prefix)
+    current_annex = regulatory_source  # default = source name
     for page in doc:
-        for ln in _extract_lines(page):
+        page_lines = _extract_lines(page)
+        # Detect annex/document from the FIRST non-empty line of the page only (page header)
+        if page_lines:
+            first_txt = page_lines[0].text.strip()
+            m_hdr = _ANNEX_HEADER_RE.match(first_txt)
+            if m_hdr:
+                new_annex = f"{m_hdr.group(1)} {m_hdr.group(2)}".strip()
+                if new_annex != current_annex:
+                    current_annex = new_annex
+                page_lines = page_lines[1:]  # skip the header line from content
+
+        for ln in page_lines:
             txt = ln.text.strip()
             if not txt:
                 continue
@@ -122,47 +136,54 @@ def parse_narrative_pdf(
                 continue
             if _TOC_DOT_RE.search(txt):
                 continue
-            all_lines.append(ln)
+            all_lines.append((ln, current_annex))
 
     # ── Pass 2: segment into sections ────────────────────────────────────
-    # Each section: (code, title, body_lines)
-    sections: list[tuple[str, str, list[str]]] = []
+    # Each section: (annex_prefix, code, title, body_lines)
+    sections: list[tuple[str, str, str, list[str]]] = []
     current_code: str | None = None
     current_title: str = ""
     current_body: list[str] = []
+    current_pfx: str = regulatory_source
 
-    for ln in all_lines:
+    for ln, annex_pfx in all_lines:
         m = _is_heading(ln)
         if m:
             code = m.group(1)
             heading_rest = (m.group(2) or "").strip()
             if current_code is not None:
-                sections.append((current_code, current_title, current_body))
-            # Accumulate multi-word headings that follow on next bold lines
+                sections.append((current_pfx, current_code, current_title, current_body))
             current_code = code
             current_title = heading_rest
             current_body = []
+            current_pfx = annex_pfx
         else:
             if current_code is None:
                 continue  # preamble before first section
-            # If previous section had no title yet and this line is bold → title continuation
             if not current_title and ln.bold:
                 current_title = ln.text.strip()
             else:
                 current_body.append(ln.text.strip())
 
     if current_code is not None:
-        sections.append((current_code, current_title, current_body))
+        sections.append((current_pfx, current_code, current_title, current_body))
 
     if not sections:
         return result
 
     # ── Pass 3: build hierarchy and ParsedNodes ──────────────────────────
-    # Stack of (code, title) for ancestors
+    # Stack keyed by (annex_prefix, code) to reset hierarchy on annex change
     ancestor_stack: list[tuple[str, str]] = []
+    last_annex: str = ""
+    seen_refs: dict[str, int] = {}  # ref_code -> count for dedup
 
-    for code, title, body_lines in sections:
+    for annex_pfx, code, title, body_lines in sections:
         depth = _section_depth(code)
+
+        # Reset hierarchy when annex changes
+        if annex_pfx != last_annex:
+            ancestor_stack = []
+            last_annex = annex_pfx
 
         # Skip TOC ghost entries (no title and no body)
         content = "\n".join(body_lines).strip()
@@ -173,8 +194,15 @@ def parse_narrative_pdf(
         while len(ancestor_stack) >= depth:
             ancestor_stack.pop()
 
-        hierarchy = _hierarchy_path(result.source_document_title, ancestor_stack)
-        ref_code = f"{regulatory_source} § {code}".strip(" §") if regulatory_source else code
+        hierarchy = _hierarchy_path(annex_pfx or result.source_document_title, ancestor_stack)
+        # Prefix with annex to guarantee uniqueness across annexes in same file
+        ref_code = f"{annex_pfx} § {code}" if annex_pfx else code
+        # Deduplicate: appendices may restart section numbering
+        if ref_code in seen_refs:
+            seen_refs[ref_code] += 1
+            ref_code = f"{ref_code} ({seen_refs[ref_code]})"
+        else:
+            seen_refs[ref_code] = 1
         full_title = f"{code} {title}".strip() if title else code
 
         h = hashlib.sha256(content.encode()).hexdigest()[:16]
