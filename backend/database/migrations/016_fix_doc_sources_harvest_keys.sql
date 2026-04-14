@@ -22,3 +22,19 @@ ON CONFLICT (id) DO UPDATE SET harvest_key = EXCLUDED.harvest_key;
 
 -- Nullify broken harvest_keys for PDF-only docs (no XML available on EASA)
 UPDATE doc_sources SET harvest_key = NULL WHERE id IN ('cs-p', 'cs-apu', 'cs-fcd', 'cs-etso');
+
+-- Set doc_title_pattern for entries that were missing it (required for catalog indexed status)
+UPDATE doc_sources SET doc_title_pattern = '%CS-22%'                                    WHERE id = 'cs-22';
+UPDATE doc_sources SET doc_title_pattern = '%CS-23%'                                    WHERE id = 'cs-23';
+UPDATE doc_sources SET doc_title_pattern = '%CS-27%'                                    WHERE id = 'cs-27';
+UPDATE doc_sources SET doc_title_pattern = '%CS-29%'                                    WHERE id = 'cs-29';
+UPDATE doc_sources SET doc_title_pattern = '%CS-E%'                                     WHERE id = 'cs-e';
+UPDATE doc_sources SET doc_title_pattern = '%CS-LSA%'                                   WHERE id = 'cs-lsa';
+UPDATE doc_sources SET doc_title_pattern = '%Acceptable Means of Compliance for Airworthiness%' WHERE id = 'amc-20';
+UPDATE doc_sources SET doc_title_pattern = '%ATM%ANS%Equipment%'                        WHERE id = 'atm-ans';
+UPDATE doc_sources SET doc_title_pattern = '%European Rules of the Air%'                WHERE id = 'sera';
+UPDATE doc_sources SET doc_title_pattern = '%Unmanned Aircraft%'                        WHERE id = 'uas';
+UPDATE doc_sources SET doc_title_pattern = '%Information Security%'                     WHERE id = 'infosec';
+UPDATE doc_sources SET doc_title_pattern = '%Ground Handling%'                          WHERE id = 'gh';
+UPDATE doc_sources SET doc_title_pattern = '%Aircrew%'                                  WHERE id = 'part-fcl';
+UPDATE doc_sources SET doc_title_pattern = '%Aircrew%'                                  WHERE id = 'part-med';
