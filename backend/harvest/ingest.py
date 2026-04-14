@@ -47,161 +47,31 @@ def _word_diff(old: str, new: str) -> list[dict]:
             ops.append({"op": "insert", "text": " ".join(new_words[j1:j2])})
     return ops[:500]
 
-# Catalog of available EASA sources
-REGULATORY_SOURCES = {
-    "part21": {
-        "name": "EASA Part 21",
-        "urls": {
-            "xml": "https://www.easa.europa.eu/en/downloads/136660/en",
-        },
-        "external_id": "easa-part21",
-    },
-    "part26": {
-        "name": "Part 26 — Additional Airworthiness Specifications",
-        "urls": {
-            "xml": "https://www.easa.europa.eu/en/downloads/136670/en",
-        },
-        "external_id": "easa-part26",
-    },
-    "continuing-airworthiness": {
-        "name": "Continuing Airworthiness (M, 145, 66, CAMO)",
-        "urls": {
-            "xml": "https://www.easa.europa.eu/en/downloads/136699/en",
-        },
-        "external_id": "easa-airworthiness",
-    },
-    "air-operations": {
-        "name": "Air Operations (ORO, CAT)",
-        "urls": {
-            "xml": "https://www.easa.europa.eu/en/downloads/136682/en",
-        },
-        "external_id": "easa-ops",
-    },
-    "aircrew": {
-        "name": "Aircrew (FCL, MED)",
-        "urls": {
-            "xml": "https://www.easa.europa.eu/en/downloads/136679/en",
-        },
-        "external_id": "easa-aircrew",
-    },
-    "cs-25": {
-        "name": "CS-25 — Large Aeroplanes",
-        "urls": {
-            "xml": "https://www.easa.europa.eu/en/downloads/136662/en",
-            "pdf": "https://www.easa.europa.eu/en/downloads/136662/en",
-        },
-        "external_id": "easa-cs25",
-        "use_smart_parser": False,
-    },
-    "cs-acns": {
-        "name": "CS-ACNS — Airborne Communications, Navigation and Surveillance",
-        "urls": {
-            "xml": "https://www.easa.europa.eu/en/downloads/136674/en",
-            "pdf": "https://www.easa.europa.eu/en/downloads/136674/en",
-        },
-        "external_id": "easa-csacns",
-        "use_smart_parser": False,
-    },
-    "cs-awo": {
-        "name": "CS-AWO — All Weather Operations",
-        "urls": {
-            "pdf": "https://www.easa.europa.eu/en/downloads/136530/en",
-        },
-        "external_id": "cs-awo",
-        "use_smart_parser": False,
-    },
-    "aerodromes": {
-        "name": "Aerodromes (ADR)",
-        "urls": {
-            "xml": "https://www.easa.europa.eu/en/downloads/136677/en",
-        },
-        "external_id": "easa-aerodromes",
-    },
-    "cs-29": {
-        "name": "CS-29 — Large Rotorcraft",
-        "urls": {
-            "xml": "https://www.easa.europa.eu/en/downloads/143408/en",
-        },
-        "external_id": "easa-cs29",
-    },
-    "sera": {
-        "name": "SERA — Standardised European Rules of the Air",
-        "urls": {
-            "xml": "https://www.easa.europa.eu/en/downloads/136676/en",
-        },
-        "external_id": "easa-sera",
-    },
-    "info-security": {
-        "name": "Information Security (EU 2023/203 & 2022/1645)",
-        "urls": {
-            "xml": "https://www.easa.europa.eu/en/downloads/138790/en",
-        },
-        "external_id": "easa-infosec",
-    },
-    "ground-handling": {
-        "name": "Ground Handling (EU 2025/23 & 2025/20)",
-        "urls": {
-            "xml": "https://www.easa.europa.eu/en/downloads/142666/en",
-        },
-        "external_id": "easa-gh",
-    },
-    "cs-27": {
-        "name": "CS-27 — Small Rotorcraft",
-        "urls": {
-            "xml": "https://www.easa.europa.eu/en/downloads/137636/en",
-        },
-        "external_id": "easa-cs27",
-    },
-    "cs-23": {
-        "name": "CS-23 — Normal-Category Aeroplanes",
-        "urls": {
-            "xml": "https://www.easa.europa.eu/en/downloads/138962/en",
-        },
-        "external_id": "easa-cs23",
-    },
-    "cs-e": {
-        "name": "CS-E — Engines",
-        "urls": {
-            "xml": "https://www.easa.europa.eu/en/downloads/139033/en",
-        },
-        "external_id": "easa-cse",
-    },
-    "uas": {
-        "name": "UAS — Unmanned Aircraft Systems (EU 2019/947)",
-        "urls": {
-            "xml": "https://www.easa.europa.eu/en/downloads/137111/en",
-        },
-        "external_id": "easa-uas",
-    },
-    "atm-ans": {
-        "name": "ATM/ANS Equipment (EU 2023/1769 & 2023/1768)",
-        "urls": {
-            "xml": "https://www.easa.europa.eu/en/downloads/140636/en",
-        },
-        "external_id": "easa-atm-ans",
-    },
-    "amc-20": {
-        "name": "AMC-20 — Airworthiness Acceptable Means of Compliance",
-        "urls": {
-            "xml": "https://www.easa.europa.eu/en/downloads/137992/en",
-        },
-        "external_id": "easa-amc20",
-    },
-    "cs-lsa": {
-        "name": "CS-LSA — Light Sport Aeroplanes",
-        "urls": {
-            "xml": "https://www.easa.europa.eu/en/downloads/136667/en",
-        },
-        "external_id": "easa-cslsa",
-    },
-    "cs-22": {
-        "name": "CS-22 — Sailplanes and Powered Sailplanes",
-        "urls": {
-            "xml": "https://www.easa.europa.eu/en/downloads/136661/en",
-        },
-        "external_id": "easa-cs22",
-    },
-}
+def _load_sources_from_db() -> dict[str, dict]:
+    """Load all enabled harvest_sources from DB as {external_id: cfg_dict}.
+    cfg_dict keys: name, external_id, urls (dict), use_smart_parser (bool).
+    """
+    conn = psycopg2.connect(settings.database_url_sync)
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT external_id, name, urls FROM harvest_sources WHERE enabled = TRUE ORDER BY name"
+            )
+            rows = cur.fetchall()
+    finally:
+        conn.close()
+
+    sources: dict[str, dict] = {}
+    for external_id, name, urls_json in rows:
+        urls = urls_json or {}
+        use_smart_parser = bool(urls.pop("use_smart_parser", True))
+        sources[external_id] = {
+            "name": name,
+            "external_id": external_id,
+            "urls": urls,
+            "use_smart_parser": use_smart_parser,
+        }
+    return sources
 
 
 SOURCE_FORMAT = "MIXED"
@@ -524,47 +394,17 @@ def ingest(file_path: Path, *, source_name: str, source_url: str, external_id: s
     }
 
 
-def _seed_sources() -> int:
-    """Upsert all REGULATORY_SOURCES into harvest_sources without fetching/parsing any document."""
-    conn = psycopg2.connect(settings.database_url_sync)
-    try:
-        with conn:
-            with conn.cursor() as cur:
-                for key, cfg in REGULATORY_SOURCES.items():
-                    cur.execute(
-                        """
-                        INSERT INTO harvest_sources (external_id, name, base_url, format, frequency, last_sync_at)
-                        VALUES (%s, %s, %s, %s, %s, NULL)
-                        ON CONFLICT (external_id) DO UPDATE
-                          SET name = EXCLUDED.name,
-                              base_url = EXCLUDED.base_url
-                        """,
-                        (
-                            cfg["external_id"],
-                            cfg["name"],
-                            cfg["urls"].get("xml") or cfg["urls"].get("html") or cfg["urls"].get("pdf") or "",
-                            "MIXED",
-                            "monthly",
-                        ),
-                    )
-                    print(f"[seed] upserted: {cfg['external_id']} ({cfg['name']})")
-    finally:
-        conn.close()
-    return 0
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Ingest EASA Rules into Postgres")
     parser.add_argument(
         "--source",
-        choices=list(REGULATORY_SOURCES.keys()),
-        default="part21",
-        help="Regulatory source to ingest (default: part21)",
+        help="external_id of the source to ingest (as stored in harvest_sources)",
+        default="easa-part21",
     )
     parser.add_argument(
-        "--seed",
+        "--list-sources",
         action="store_true",
-        help="Pre-populate harvest_sources for all REGULATORY_SOURCES without fetching or parsing",
+        help="List all enabled sources from DB and exit",
     )
     parser.add_argument(
         "--offline",
@@ -579,17 +419,24 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    if args.seed:
-        return _seed_sources()
+    sources = _load_sources_from_db()
 
-    source_cfg = REGULATORY_SOURCES[args.source]
+    if args.list_sources:
+        for eid, cfg in sorted(sources.items()):
+            print(f"  {eid:30s} {cfg['name']}")
+        return 0
+
+    if args.source not in sources:
+        print(f"[error] unknown source '{args.source}'. Use --list-sources to see available sources.")
+        return 1
+
+    source_cfg = sources[args.source]
 
     if args.offline:
         file_path = args.offline.resolve()
         content_hash = _quick_hash(file_path)
         source_url = source_cfg["urls"].get("xml") or source_cfg["urls"].get("html") or source_cfg["urls"].get("pdf")
-        
-        # Infer format from extension
+
         ext = file_path.suffix.lower()
         if ext == ".pdf":
             doc_format = "pdf"
@@ -597,7 +444,7 @@ def main(argv: list[str] | None = None) -> int:
             doc_format = "html"
         else:
             doc_format = "xml"
-            
+
         print(f"[offline] using {file_path} (format: {doc_format})")
     else:
         print(f"[fetch] downloading {source_cfg['name']} ...")
