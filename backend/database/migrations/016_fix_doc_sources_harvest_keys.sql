@@ -19,3 +19,6 @@ VALUES
     ('infosec', 'Information Security (EU 2023/203)',          'InfoSec', 'ir',     'other',                 'easa-infosec', 99),
     ('gh',      'Ground Handling (EU 2025/23)',                'GH',      'ir',     'other',                 'easa-gh',      99)
 ON CONFLICT (id) DO UPDATE SET harvest_key = EXCLUDED.harvest_key;
+
+-- Nullify broken harvest_keys for PDF-only docs (no XML available on EASA)
+UPDATE doc_sources SET harvest_key = NULL WHERE id IN ('cs-p', 'cs-apu', 'cs-fcd', 'cs-etso');
