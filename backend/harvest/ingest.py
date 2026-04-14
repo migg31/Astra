@@ -378,6 +378,22 @@ def ingest(file_path: Path, *, source_name: str, source_url: str, external_id: s
             )
         conn.commit()
 
+        # ── Auto-fill doc_title_pattern for any doc_sources linked to this source ──
+        # Runs only when pattern is NULL so it never overrides a manual value.
+        if title:
+            with psycopg2.connect(settings.database_url_sync) as conn2:
+                with conn2.cursor() as cur2:
+                    cur2.execute(
+                        """
+                        UPDATE doc_sources
+                        SET doc_title_pattern = %s
+                        WHERE harvest_key = %s
+                          AND doc_title_pattern IS NULL
+                        """,
+                        (f"%{title[:60]}%", external_id),
+                    )
+                conn2.commit()
+
     return {
         "source_name": source_name,
         "source_id": source_id,

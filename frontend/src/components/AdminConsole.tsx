@@ -67,6 +67,7 @@ export function AdminConsole({ onClose }: AdminConsoleProps) {
   const [catalogSaving, setCatalogSaving] = useState<string | null>(null);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [rowUrls, setRowUrls] = useState<Record<string, { xml: string; html: string; pdf: string }>>({});
+  const [rowSharedKey, setRowSharedKey] = useState<Record<string, string>>({});
   const [rowSaving, setRowSaving] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [purgeConfirm, setPurgeConfirm] = useState(false);
@@ -775,75 +776,119 @@ export function AdminConsole({ onClose }: AdminConsoleProps) {
                           </button>
                         </td>
                       </tr>
-                      {expandedRow === entry.id && (
+                      {expandedRow === entry.id && (() => {
+                        const urls = rowUrls[entry.id] ?? { xml: "", html: "", pdf: "" };
+                        const sharedKey = rowSharedKey[entry.id] ?? "";
+                        const usingShare = !entry.harvest_source_id && sharedKey !== "";
+                        const docsWithSource = catalogEntries.filter(e => e.harvest_key && e.id !== entry.id);
+                        return (
                         <tr key={entry.id + "-expand"}>
-                          <td colSpan={9} style={{ padding: "12px 24px", background: "#0c1729", borderBottom: "2px solid #1e293b" }}>
-                            <div style={{ display: "flex", gap: "12px", alignItems: "flex-end", flexWrap: "wrap" }}>
-                              <div>
-                                <div style={{ color: "#64748b", fontSize: "0.72rem", marginBottom: 4 }}>XML URL</div>
-                                <input
-                                  value={rowUrls[entry.id]?.xml ?? ""}
-                                  onChange={e => setRowUrls(prev => ({ ...prev, [entry.id]: { ...prev[entry.id], xml: e.target.value } }))}
-                                  placeholder="https://..."
-                                  style={{ background: "#1e293b", color: "#e2e8f0", border: "1px solid #334155", borderRadius: 4, padding: "4px 8px", fontSize: "0.8rem", width: 280 }}
-                                />
+                          <td colSpan={9} style={{ padding: "16px 24px", background: "#0c1729", borderBottom: "2px solid #1e293b" }}>
+                            {!entry.harvest_source_id && (
+                              <p style={{ margin: "0 0 12px", color: "#64748b", fontSize: "0.78rem" }}>
+                                Ce document n'a pas encore de source de données configurée.
+                              </p>
+                            )}
+                            <div style={{ display: "flex", gap: "20px", alignItems: "flex-start", flexWrap: "wrap" }}>
+
+                              {/* Option A — URL directe */}
+                              <div style={{ flex: "1 1 300px" }}>
+                                <div style={{ color: "#94a3b8", fontSize: "0.72rem", fontWeight: 600, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                                  {entry.harvest_source_id ? "Mettre à jour les URLs" : "Option A — Nouveau fichier XML / PDF"}
+                                </div>
+                                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                                  <div>
+                                    <div style={{ color: "#64748b", fontSize: "0.72rem", marginBottom: 3 }}>XML URL</div>
+                                    <input
+                                      value={urls.xml}
+                                      onChange={e => setRowUrls(prev => ({ ...prev, [entry.id]: { ...prev[entry.id], xml: e.target.value } }))}
+                                      placeholder="https://easa.europa.eu/en/downloads/XXXXXX/en"
+                                      style={{ background: "#1e293b", color: "#e2e8f0", border: "1px solid #334155", borderRadius: 4, padding: "5px 8px", fontSize: "0.8rem", width: "100%", boxSizing: "border-box" }}
+                                    />
+                                  </div>
+                                  <div>
+                                    <div style={{ color: "#64748b", fontSize: "0.72rem", marginBottom: 3 }}>PDF URL <span style={{ color: "#475569" }}>(si pas de XML)</span></div>
+                                    <input
+                                      value={urls.pdf}
+                                      onChange={e => setRowUrls(prev => ({ ...prev, [entry.id]: { ...prev[entry.id], pdf: e.target.value } }))}
+                                      placeholder="https://easa.europa.eu/en/downloads/XXXXXX/en"
+                                      style={{ background: "#1e293b", color: "#e2e8f0", border: "1px solid #334155", borderRadius: 4, padding: "5px 8px", fontSize: "0.8rem", width: "100%", boxSizing: "border-box" }}
+                                    />
+                                  </div>
+                                </div>
                               </div>
-                              <div>
-                                <div style={{ color: "#64748b", fontSize: "0.72rem", marginBottom: 4 }}>HTML URL</div>
-                                <input
-                                  value={rowUrls[entry.id]?.html ?? ""}
-                                  onChange={e => setRowUrls(prev => ({ ...prev, [entry.id]: { ...prev[entry.id], html: e.target.value } }))}
-                                  placeholder="https://..."
-                                  style={{ background: "#1e293b", color: "#e2e8f0", border: "1px solid #334155", borderRadius: 4, padding: "4px 8px", fontSize: "0.8rem", width: 280 }}
-                                />
-                              </div>
-                              <div>
-                                <div style={{ color: "#64748b", fontSize: "0.72rem", marginBottom: 4 }}>PDF URL</div>
-                                <input
-                                  value={rowUrls[entry.id]?.pdf ?? ""}
-                                  onChange={e => setRowUrls(prev => ({ ...prev, [entry.id]: { ...prev[entry.id], pdf: e.target.value } }))}
-                                  placeholder="https://..."
-                                  style={{ background: "#1e293b", color: "#e2e8f0", border: "1px solid #334155", borderRadius: 4, padding: "4px 8px", fontSize: "0.8rem", width: 280 }}
-                                />
-                              </div>
-                              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+
+                              {/* Option B — Partager source existante (seulement si pas encore de source) */}
+                              {!entry.harvest_source_id && docsWithSource.length > 0 && (
+                                <div style={{ flex: "1 1 260px" }}>
+                                  <div style={{ color: "#94a3b8", fontSize: "0.72rem", fontWeight: 600, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                                    Option B — Partager la source d'un document existant
+                                  </div>
+                                  <div style={{ color: "#64748b", fontSize: "0.72rem", marginBottom: 4 }}>
+                                    Ce doc fait partie du même fichier XML qu'un autre doc déjà configuré
+                                  </div>
+                                  <select
+                                    value={sharedKey}
+                                    onChange={e => setRowSharedKey(prev => ({ ...prev, [entry.id]: e.target.value }))}
+                                    style={{ background: "#1e293b", color: "#e2e8f0", border: "1px solid #334155", borderRadius: 4, padding: "5px 8px", fontSize: "0.8rem", width: "100%" }}
+                                  >
+                                    <option value="">— Sélectionner un document —</option>
+                                    {docsWithSource.map(d => (
+                                      <option key={d.id} value={d.harvest_key!}>
+                                        {d.short} ({d.harvest_key})
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                              )}
+
+                              {/* Actions */}
+                              <div style={{ display: "flex", gap: 8, alignItems: "flex-end", paddingBottom: 2 }}>
                                 <button
                                   disabled={rowSaving === entry.id}
                                   onClick={async () => {
-                                    const urls = rowUrls[entry.id] ?? { xml: "", html: "", pdf: "" };
-                                    const base_url = urls.xml || urls.html || urls.pdf || entry.easa_url;
                                     setRowSaving(entry.id);
                                     try {
-                                      if (entry.harvest_source_id) {
-                                        await updateSource(entry.harvest_source_id, { urls, base_url });
+                                      if (usingShare) {
+                                        await patchCatalogEntry(entry.id, { harvest_key: sharedKey });
                                       } else {
-                                        await createSource({
-                                          name: entry.short,
-                                          external_id: entry.id,
-                                          base_url,
-                                          urls,
-                                          format: "MIXED",
-                                          frequency: "monthly",
-                                          enabled: true,
-                                        });
-                                        await patchCatalogEntry(entry.id, {});
+                                        const base_url = urls.xml || urls.pdf || entry.easa_url;
+                                        if (entry.harvest_source_id) {
+                                          await updateSource(entry.harvest_source_id, { urls, base_url });
+                                        } else {
+                                          const created = await createSource({
+                                            name: entry.short,
+                                            external_id: entry.id,
+                                            base_url,
+                                            urls,
+                                            format: "MIXED",
+                                            frequency: "monthly",
+                                            enabled: true,
+                                          });
+                                          await patchCatalogEntry(entry.id, { harvest_key: entry.id });
+                                          void created;
+                                        }
                                       }
                                       setExpandedRow(null);
+                                      setRowSharedKey(prev => { const n = { ...prev }; delete n[entry.id]; return n; });
                                       await refreshData();
                                     } catch (err: any) { setError("Save failed: " + err.message); }
                                     finally { setRowSaving(null); }
                                   }}
                                   className="admin-action-btn admin-action-btn--save"
-                                  style={{ padding: "5px 16px" }}
+                                  style={{ padding: "6px 18px" }}
                                 >
-                                  {rowSaving === entry.id ? "Saving…" : entry.harvest_source_id ? "Update" : "Add source"}
+                                  {rowSaving === entry.id ? "Saving…" : entry.harvest_source_id ? "Update" : usingShare ? "Partager la source" : "Créer la source"}
                                 </button>
-                                <button onClick={() => setExpandedRow(null)} className="admin-action-btn">Cancel</button>
+                                <button onClick={() => { setExpandedRow(null); setRowSharedKey(prev => { const n = { ...prev }; delete n[entry.id]; return n; }); }} className="admin-action-btn">
+                                  Annuler
+                                </button>
                               </div>
                             </div>
                           </td>
                         </tr>
-                      )}
+                        );
+                      })()}
                       </React.Fragment>
                     );
                   })}

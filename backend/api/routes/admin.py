@@ -687,7 +687,7 @@ async def create_catalog_entry(body: dict, db: AsyncSession = Depends(get_sessio
 @router.patch("/catalog/{source_id}")
 async def patch_catalog_entry(source_id: str, body: dict, db: AsyncSession = Depends(get_session)):
     """Update category, domain, is_active for a catalog entry."""
-    allowed = {"category_id", "domain_id", "is_active", "description", "name", "short", "easa_url"}
+    allowed = {"category_id", "domain_id", "is_active", "description", "name", "short", "easa_url", "harvest_key"}
     updates = {k: v for k, v in body.items() if k in allowed}
     if not updates:
         raise HTTPException(status_code=400, detail="No valid fields to update")
