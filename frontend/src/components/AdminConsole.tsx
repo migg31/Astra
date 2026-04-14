@@ -74,7 +74,7 @@ export function AdminConsole({ onClose }: AdminConsoleProps) {
   const [purgeRunning, setPurgeRunning] = useState(false);
   const [purgeResult, setPurgeResult] = useState<string | null>(null);
 
-  // Add document form
+  // Add regulation form
   const BLANK_DOC = { id: "", name: "", short: "", category_id: "", domain_id: "", easa_url: "", description: "" };
   const [showAddDoc, setShowAddDoc] = useState(false);
   const [newDoc, setNewDoc] = useState(BLANK_DOC);
@@ -513,10 +513,10 @@ export function AdminConsole({ onClose }: AdminConsoleProps) {
           <div className="admin-content">
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1rem" }}>
               <div>
-                <h1 className="admin-page-title" style={{ margin: 0 }}>Documents</h1>
+                <h1 className="admin-page-title" style={{ margin: 0 }}>Regulations</h1>
                 <p className="admin-page-desc" style={{ margin: "4px 0 0" }}>
                   {catalogEntries.filter(e => e.indexed).length} / {catalogEntries.length} indexed
-                  &nbsp;·&nbsp;{regulatorySources.filter(s => s.enabled).length} harvester sources active
+                  &nbsp;·&nbsp;{regulatorySources.filter(s => s.enabled).length} source files active
                 </p>
               </div>
               <button
@@ -524,14 +524,14 @@ export function AdminConsole({ onClose }: AdminConsoleProps) {
                 className="admin-primary-btn"
                 style={{ width: "auto", padding: "0.5rem 1.25rem" }}
               >
-                {showAddDoc ? "✕ Cancel" : "+ Add document"}
+                {showAddDoc ? "✕ Cancel" : "+ Add regulation"}
               </button>
             </div>
 
-            {/* ── Add document form ── */}
+            {/* ── Add regulation form ── */}
             {showAddDoc && (
               <div className="admin-card" style={{ marginBottom: "1rem", padding: "1rem 1.25rem" }}>
-                <h3 style={{ margin: "0 0 0.75rem", fontSize: "0.9rem", color: "#e2e8f0" }}>New document</h3>
+                <h3 style={{ margin: "0 0 0.75rem", fontSize: "0.9rem", color: "#e2e8f0" }}>New regulation</h3>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "10px", marginBottom: "10px" }}>
                   <div>
                     <div style={{ color: "#64748b", fontSize: "0.72rem", marginBottom: 3 }}>ID (slug) *</div>
@@ -576,7 +576,7 @@ export function AdminConsole({ onClose }: AdminConsoleProps) {
                   </div>
                 </div>
                 <button onClick={handleAddDoc} disabled={addDocSaving} className="admin-action-btn admin-action-btn--save" style={{ padding: "5px 18px" }}>
-                  {addDocSaving ? "Saving…" : "Create document"}
+                  {addDocSaving ? "Saving…" : "Create regulation"}
                 </button>
               </div>
             )}
@@ -629,7 +629,7 @@ export function AdminConsole({ onClose }: AdminConsoleProps) {
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.82rem" }}>
                 <thead>
                   <tr style={{ borderBottom: "2px solid #1e293b", background: "#0f172a", textAlign: "left" }}>
-                    <th style={{ padding: "8px 12px", fontWeight: 600, color: "#94a3b8" }}>Document</th>
+                    <th style={{ padding: "8px 12px", fontWeight: 600, color: "#94a3b8" }}>Regulation</th>
                     <th style={{ padding: "8px 12px", fontWeight: 600, color: "#94a3b8" }}>Category</th>
                     <th style={{ padding: "8px 12px", fontWeight: 600, color: "#94a3b8" }}>Domain</th>
                     <th style={{ padding: "8px 12px", fontWeight: 600, color: "#94a3b8", textAlign: "center" }}>Navigate</th>
@@ -776,7 +776,7 @@ export function AdminConsole({ onClose }: AdminConsoleProps) {
                           <td colSpan={9} style={{ padding: "16px 24px", background: "#0c1729", borderBottom: "2px solid #1e293b" }}>
                             {!entry.harvest_source_id && (
                               <p style={{ margin: "0 0 12px", color: "#64748b", fontSize: "0.78rem" }}>
-                                Ce document n'a pas encore de source de données configurée.
+                                Ce règlement n'a pas encore de source de données configurée.
                               </p>
                             )}
                             <div style={{ display: "flex", gap: "20px", alignItems: "flex-start", flexWrap: "wrap" }}>
@@ -812,17 +812,17 @@ export function AdminConsole({ onClose }: AdminConsoleProps) {
                               {!entry.harvest_source_id && docsWithSource.length > 0 && (
                                 <div style={{ flex: "1 1 260px" }}>
                                   <div style={{ color: "#94a3b8", fontSize: "0.72rem", fontWeight: 600, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                                    Option B — Partager la source d'un document existant
+                                    Option B — Partager la source d'un règlement existant
                                   </div>
                                   <div style={{ color: "#64748b", fontSize: "0.72rem", marginBottom: 4 }}>
-                                    Ce doc fait partie du même fichier XML qu'un autre doc déjà configuré
+                                    Ce règlement fait partie du même fichier qu'un autre règlement déjà configuré
                                   </div>
                                   <select
                                     value={sharedKey}
                                     onChange={e => setRowSharedKey(prev => ({ ...prev, [entry.id]: e.target.value }))}
                                     style={{ background: "#1e293b", color: "#e2e8f0", border: "1px solid #334155", borderRadius: 4, padding: "5px 8px", fontSize: "0.8rem", width: "100%" }}
                                   >
-                                    <option value="">— Sélectionner un document —</option>
+                                    <option value="">— Sélectionner un règlement —</option>
                                     {docsWithSource.map(d => (
                                       <option key={d.id} value={d.harvest_key!}>
                                         {d.short} ({d.harvest_key})
