@@ -1,7 +1,6 @@
 -- Migration 015: Seed correct URLs and config for all harvest_sources
--- This replaces the REGULATORY_SOURCES Python dict in ingest.py.
 -- The urls JSONB field is the single source of truth for download URLs.
--- use_smart_parser (bool, default true) and doc_format_hint (text) are optional config keys.
+-- use_smart_parser (bool, default true) is an optional config key in urls JSONB.
 
 INSERT INTO harvest_sources (external_id, name, base_url, format, frequency, urls)
 VALUES
