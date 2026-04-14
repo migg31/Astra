@@ -333,7 +333,23 @@ def ingest(file_path: Path, *, source_name: str, source_url: str, external_id: s
     if doc_format == "astra_json" or file_path.suffix.lower() == ".json":
         result = parse_astra_json(file_path)
     elif doc_format == "pdf" and use_narrative_parser:
-        result = parse_narrative_pdf(file_path, regulatory_source=source_name)
+        # Check for a pre-computed Astra JSON alongside the PDF (document.json / enriched.json)
+        json_path = file_path.with_suffix(".json")
+        enriched_path = file_path.with_name("enriched.json")
+        if enriched_path.exists():
+            result = parse_astra_json(enriched_path)
+        elif json_path.exists():
+            result = parse_astra_json(json_path)
+        else:
+            # Parse PDF and cache the result as JSON for future runs
+            result = parse_narrative_pdf(file_path, regulatory_source=source_name)
+            from backend.harvest.pdf_to_json import convert as _pdf_to_json_convert
+            try:
+                import json as _json
+                cached = _pdf_to_json_convert(file_path, regulatory_source=source_name)
+                json_path.write_text(_json.dumps(cached, ensure_ascii=False, indent=2), encoding="utf-8")
+            except Exception:
+                pass  # caching failure is non-fatal
     elif doc_format == "pdf" and not use_smart_parser:
         result = parse_cs_pdf(file_path, regulatory_source=source_name)
     elif doc_format == "pdf":
