@@ -234,6 +234,14 @@ def parse_narrative_pdf(
         while len(ancestor_stack) >= depth:
             ancestor_stack.pop()
 
+        # If the section jumps more than one level deep (e.g. starts at 4.1 with no prior 4),
+        # synthesise missing parent entries so the hierarchy path is coherent.
+        while len(ancestor_stack) < depth - 1:
+            # Infer the parent code from the current code (e.g. "4.1" → "4")
+            parts_code = code.split(".")
+            parent_code = ".".join(parts_code[:len(ancestor_stack) + 1])
+            ancestor_stack.append((parent_code, ""))
+
         # Build hierarchy root: doc_title / appendix (if any) / sections...
         doc_root = annex_pfx or result.source_document_title
         # Insert appendix as intermediate level in hierarchy
