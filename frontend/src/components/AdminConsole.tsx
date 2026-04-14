@@ -846,11 +846,13 @@ export function AdminConsole({ onClose }: AdminConsoleProps) {
                                         if (entry.harvest_source_id) {
                                           await updateSource(entry.harvest_source_id, { urls, base_url });
                                         } else {
+                                          const srcUrls = { ...urls } as Record<string, unknown>;
+                                          if (!urls.xml && !urls.html) srcUrls.use_smart_parser = false;
                                           const created = await createSource({
                                             name: entry.short,
                                             external_id: entry.id,
                                             base_url,
-                                            urls,
+                                            urls: srcUrls as typeof urls,
                                             format: "MIXED",
                                             frequency: "monthly",
                                             enabled: true,
