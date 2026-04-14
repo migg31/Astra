@@ -24,6 +24,7 @@ _PAGE_FOOTER_RE = re.compile(
 _ANNEX_HEADER_RE = re.compile(r"^(AMC|GM)\s+([\d]+(?:[\s\-\.]+\d+)*)\s*$")  # e.g. "AMC 2026", "AMC 20-26"
 _APPENDIX_RE = re.compile(r"^(Appendix\s+\d+)\s*$", re.IGNORECASE)  # e.g. "Appendix 2"
 _FOOTNOTE_RE = re.compile(r"^\d+\s+[A-Z]")  # footnote lines: "1 Regulation...", "2 Commission..."
+_UNIT_RE = re.compile(r"^(ft|m|km|nm|kg|lb|kts?|deg|°|%|Hz|MHz|dB)$", re.IGNORECASE)  # physical units
 _TOC_DOT_RE = re.compile(r"\.{4,}")  # lines of dots = TOC
 _SMALL_CAP_SIZE = 8.5  # spans below this are "small caps" artifacts — skip
 
@@ -76,7 +77,19 @@ def _is_heading(line: _Line) -> re.Match | None:
     txt = line.text.strip()
     if _TOC_DOT_RE.search(txt):
         return None  # TOC line
-    return _SECTION_RE.match(txt)
+    m = _SECTION_RE.match(txt)
+    if not m:
+        return None
+    code = m.group(1)
+    title_rest = (m.group(2) or "").strip()
+    # Reject bare integers > 50 with no sub-levels (e.g. "199 ft", "238 ft")
+    # Real section numbers above 50 at top level are unrealistic for EASA docs
+    if "." not in code and int(code) > 50:
+        return None
+    # Reject headings whose "title" is a physical unit (ft, m, nm...)
+    if title_rest and _UNIT_RE.match(title_rest):
+        return None
+    return m
 
 
 def _section_depth(code: str) -> int:
