@@ -162,7 +162,7 @@ export function AdminConsole({ onClose }: AdminConsoleProps) {
     }
     setAddDocSaving(true);
     try {
-      const res = await fetch(`/api/admin/catalog`, {
+      const res = await fetch(`http://localhost:8000/api/admin/catalog`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newDoc),
